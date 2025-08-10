@@ -2,7 +2,7 @@ defmodule WolframModel do
   @moduledoc """
   A simplified implementation of the Wolfram Model using hypergraphs.
   """
-
+  import RuleSet
   alias Hypergraph
 
   defstruct hypergraph: %Hypergraph{},
@@ -21,8 +21,7 @@ defmodule WolframModel do
           generation: non_neg_integer(),
           rule: rule(),
           matched_hyperedges: [MapSet.t()],
-          position: any(),
-          timestamp: non_neg_integer()
+          position: any()
         }
 
   @type t :: %__MODULE__{
@@ -35,12 +34,6 @@ defmodule WolframModel do
 
   @doc """
   Creates a new Wolfram Model universe with initial hypergraph and rules.
-
-  ## Examples
-
-      iex> initial_hg = Hypergraph.new() |> Hypergraph.add_hyperedge([1, 2])
-      iex> rules = WolframModel.basic_rules()
-      iex> WolframModel.new(initial_hg, rules)
   """
   @spec new(Hypergraph.t(), [rule()]) :: t()
   def new(initial_hypergraph, rules) do
@@ -49,113 +42,6 @@ defmodule WolframModel do
       rules: rules,
       evolution_history: [initial_hypergraph]
     }
-  end
-
-  @doc """
-  Defines a set of basic evolution rules for experimentation.
-  """
-  @spec basic_rules() :: [rule()]
-  def basic_rules do
-    [
-      # Rule 1: Binary split - edge becomes two edges with new vertex
-      %{
-        name: "binary_split",
-        pattern: [MapSet.new([1, 2])],
-        replacement: [MapSet.new([1, :new]), MapSet.new([:new, 2])]
-      },
-
-      # Rule 2: Triangle completion - two edges sharing vertex become triangle
-      %{
-        name: "triangle_completion",
-        pattern: [MapSet.new([1, 2]), MapSet.new([2, 3])],
-        replacement: [MapSet.new([1, 2, 3])]
-      },
-
-      # Rule 3: Triangle split - triangle becomes three edges with center
-      %{
-        name: "triangle_split",
-        pattern: [MapSet.new([1, 2, 3])],
-        replacement: [
-          MapSet.new([1, :center]),
-          MapSet.new([2, :center]),
-          MapSet.new([3, :center])
-        ]
-      },
-
-      # Rule 4: Edge duplication - single edge becomes parallel edges
-      %{
-        name: "edge_duplication",
-        pattern: [MapSet.new([1, 2])],
-        replacement: [MapSet.new([1, 2]), MapSet.new([1, 2, :parallel])]
-      },
-
-      # Rule 5: Four-cycle formation
-      %{
-        name: "four_cycle",
-        pattern: [MapSet.new([1, 2]), MapSet.new([3, 4])],
-        replacement: [MapSet.new([1, 2, 3, 4])]
-      }
-    ]
-  end
-
-  @doc """
-  Creates some interesting specialized rule sets.
-  """
-  @spec rule_set(atom()) :: [rule()]
-  def rule_set(:growth) do
-    [
-      %{
-        name: "growth_split",
-        pattern: [MapSet.new([1, 2])],
-        replacement: [MapSet.new([1, :new]), MapSet.new([:new, 2]), MapSet.new([1, 2])]
-      },
-      %{
-        name: "growth_expand",
-        pattern: [MapSet.new([1, 2, 3])],
-        replacement: [
-          MapSet.new([1, 2, 3]),
-          MapSet.new([1, :new1]),
-          MapSet.new([2, :new2]),
-          MapSet.new([3, :new3])
-        ]
-      }
-    ]
-  end
-
-  def rule_set(:cellular_automaton) do
-    [
-      # Conway-like rules adapted for hypergraphs
-      %{
-        name: "survival",
-        pattern: [MapSet.new([1, 2]), MapSet.new([1, 3])],
-        replacement: [MapSet.new([1, 2, 3])]
-      },
-      %{
-        name: "death",
-        pattern: [MapSet.new([1, 2, 3, 4])],
-        replacement: [MapSet.new([1, 2]), MapSet.new([3, 4])]
-      }
-    ]
-  end
-
-  def rule_set(:spacetime) do
-    [
-      # Rules that might generate spacetime-like structures
-      %{
-        name: "time_step",
-        pattern: [MapSet.new([:t, :x])],
-        replacement: [MapSet.new([:t, :x]), MapSet.new([{:t, 1}, :x])]
-      },
-      %{
-        name: "space_connection",
-        pattern: [MapSet.new([{:t, 0}, :x1]), MapSet.new([{:t, 0}, :x2])],
-        replacement: [
-          MapSet.new([{:t, 0}, :x1]),
-          MapSet.new([{:t, 0}, :x2]),
-          MapSet.new([{:t, 0}, :x1, :x2])
-        ]
-      }
-    ]
   end
 
   @doc """
@@ -230,14 +116,8 @@ defmodule WolframModel do
   def analyze_causality(model) do
     events = model.causal_network
 
-    # Find causal dependencies between events
     dependencies =
-      for e1 <- events, e2 <- events, e1.timestamp < e2.timestamp do
-        if causally_related?(e1, e2) do
-          {e1, e2}
-        end
-      end
-      |> Enum.reject(&is_nil/1)
+      for e1 <- events, e2 <- events, causally_related?(e1, e2), do: {e1, e2}
 
     %{
       event_count: length(events),
@@ -289,7 +169,6 @@ defmodule WolframModel do
           id: idx,
           generation: event.generation,
           rule_name: event.rule.name,
-          timestamp: event.timestamp,
           type: "event"
         }
       end)
@@ -308,8 +187,6 @@ defmodule WolframModel do
 
     %{nodes: nodes, edges: edges}
   end
-
-  # Private helper functions
 
   defp find_first_match(model) do
     model.rules
@@ -343,7 +220,7 @@ defmodule WolframModel do
         match_two_hyperedges(hyperedges, p1, p2)
 
       _ ->
-        # More complex patterns not implemented yet
+        # TODO Handle more complex patterns
         nil
     end
   end
@@ -453,8 +330,7 @@ defmodule WolframModel do
       rule: rule,
       matched_hyperedges: match_data.matched_hyperedges,
       # Could be more sophisticated
-      position: :global,
-      timestamp: System.monotonic_time(:microsecond)
+      position: :global
     }
 
     %{
@@ -485,10 +361,13 @@ defmodule WolframModel do
     |> MapSet.new()
   end
 
+  # Two rewrite events are causally connected if they involve overlapping elements from the
+  # hypergraph. For instance, if one rule application modifies a hyperedge, and a subsequent
+  # rule application involves that same hyperedge (or elements connected to it), there's a
+  # causal relationship between these events.
   defp causally_related?(event1, event2) do
-    # Simple causality: events are related if they happened at different times
-    # and operate on overlapping regions (simplified to just time for now)
-    event1.timestamp < event2.timestamp
+    # TODO Improve causality handling: in this implementation, events are related if they follow each other
+    event1.generation < event2.generation
   end
 
   defp calculate_clustering_coefficient(hg) do
