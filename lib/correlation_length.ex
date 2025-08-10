@@ -1,14 +1,14 @@
 defmodule CorrelationLength do
   @moduledoc """
-  Optimized correlation length calculator for Wolfram Models using mutual information approach.
+  Correlation Length calculator for Wolfram Model using Mutual Information.
 
-  The correlation length measures how far structural information propagates
-  in the hypergraph by calculating mutual information between distant regions.
+  The Correlation Length measures how far structural information propagates
+  in the hypergraph by calculating Mutual Information between distant regions.
   """
   alias Hypergraph
 
   @doc """
-  Calculate correlation length for a hypergraph using mutual information decay.
+  Calculate Correlation Length for a hypergraph using Mutual Information decay.
 
   ## Parameters
   - hypergraph: Map with vertices and hyperedges
@@ -40,13 +40,10 @@ defmodule CorrelationLength do
     end
   end
 
-  @doc """
-  Build adjacency map for efficient neighbor lookup (replaces distance matrix).
-  """
+  # Build adjacency map for efficient neighbor lookup.
   defp build_adjacency_map(hypergraph) do
     hyperedges = Hypergraph.hyperedges(hypergraph)
 
-    # Build adjacency list more efficiently
     hyperedges
     |> Enum.reduce(%{}, fn hyperedge, acc ->
       # Add all pairwise connections within hyperedge
@@ -60,9 +57,7 @@ defmodule CorrelationLength do
     end)
   end
 
-  @doc """
-  Calculate mutual information between regions at a specific distance using BFS.
-  """
+  # Calculate Mutual Information between regions at a specific distance using BFS.
   defp calculate_mutual_info_at_distance(vertex_set, adjacency_map, distance, region_size, samples) do
     # Use streaming to avoid building large intermediate collections
     region_pairs = Stream.repeatedly(fn ->
@@ -78,7 +73,7 @@ defmodule CorrelationLength do
       # Use parallel processing for MI calculation
       region_pairs
       |> Task.async_stream(fn {region1, region2} ->
-        calculate_mutual_information_optimized(region1, region2, adjacency_map)
+        calculate_mutual_information(region1, region2, adjacency_map)
       end, ordered: false)
       |> Enum.map(fn {:ok, mi} -> mi end)
       |> Enum.sum()
@@ -86,9 +81,7 @@ defmodule CorrelationLength do
     end
   end
 
-  @doc """
-  Sample a region pair at target distance using BFS (much faster than Floyd-Warshall).
-  """
+  # Sample a region pair at target distance using BFS.
   defp sample_region_pair_at_distance(vertex_set, adjacency_map, target_distance, region_size) do
     vertices = MapSet.to_list(vertex_set)
     region1 = sample_region(vertices, region_size)
@@ -100,9 +93,7 @@ defmodule CorrelationLength do
     {region1, region2}
   end
 
-  @doc """
-  BFS to find vertices at specific distance (replaces expensive all-pairs shortest path).
-  """
+  # BFS to find vertices at specific distance (replaces expensive all-pairs shortest path).
   defp find_vertices_at_distance_bfs(source_region, adjacency_map, target_distance, all_vertices) do
     # Initialize BFS from all vertices in source region
     initial_queue = Enum.map(source_region, fn v -> {v, 0} end)
@@ -144,22 +135,16 @@ defmodule CorrelationLength do
     |> Enum.take(size)
   end
 
-  @doc """
-  Optimized mutual information calculation using pre-computed features and efficient distributions.
-  """
-  defp calculate_mutual_information_optimized(region1, region2, adjacency_map) do
+  defp calculate_mutual_information(region1, region2, adjacency_map) do
     # Pre-compute features once
-    features1 = extract_region_features_optimized(region1, adjacency_map)
-    features2 = extract_region_features_optimized(region2, adjacency_map)
+    features1 = extract_region_features(region1, adjacency_map)
+    features2 = extract_region_features(region2, adjacency_map)
 
-    # Use more efficient distribution calculation
     calculate_mutual_info_from_features(features1, features2)
   end
 
-  @doc """
-  Optimized feature extraction using adjacency map instead of scanning all hyperedges.
-  """
-  defp extract_region_features_optimized(region, adjacency_map) do
+  # Feature extraction using adjacency map.
+  defp extract_region_features(region, adjacency_map) do
     region
     |> Enum.map(fn vertex ->
       # Use adjacency map for O(1) degree lookup
@@ -184,9 +169,7 @@ defmodule CorrelationLength do
     end
   end
 
-  @doc """
-  More efficient mutual information calculation using frequency maps.
-  """
+  # Mutual Information calculation using frequency maps.
   defp calculate_mutual_info_from_features(features1, features2) do
     # Pre-compute frequencies
     freq1 = Enum.frequencies(features1)
@@ -219,37 +202,29 @@ defmodule CorrelationLength do
     end)
   end
 
-  @doc """
-  Optimized exponential decay fitting with better numerical stability.
-  """
-  defp fit_exponential_decay(data_points) do
-    if length(data_points) < 3 do
+  defp fit_exponential_decay(data_points) when length(data_points) < 3 do
       {:error, :insufficient_data}
-    else
-      # Filter and prepare data
-      valid_points =
-        data_points
-        |> Enum.filter(fn {_d, mi} -> mi > 1.0e-10 end)  # More robust threshold
-        |> Enum.sort_by(fn {d, _mi} -> d end)  # Sort by distance
+  end
 
-      if length(valid_points) < 3 do
-        {:error, :insufficient_positive_data}
-      else
-        case linear_regression_optimized(valid_points) do
-          {:ok, correlation_length} -> {:ok, correlation_length}
-          {:error, reason} -> {:error, reason}
-        end
+  defp fit_exponential_decay(data_points) do
+    valid_points =
+      data_points
+      |> Enum.filter(fn {_d, mi} -> mi > 1.0e-10 end)
+      |> Enum.sort_by(fn {d, _mi} -> d end)  # Sort by distance
+
+    if length(valid_points) < 3 do
+      {:error, :insufficient_positive_data}
+    else
+      case linear_regression_optimized(valid_points) do
+        {:ok, correlation_length} -> {:ok, correlation_length}
+        {:error, reason} -> {:error, reason}
       end
     end
   end
 
-  @doc """
-  Optimized linear regression with better numerical stability.
-  """
   defp linear_regression_optimized(data_points) do
     {distances, mutual_infos} = Enum.unzip(data_points)
 
-    # Use log transformation with numerical stability
     log_mis =
       mutual_infos
       |> Enum.map(fn mi ->
@@ -261,7 +236,6 @@ defmodule CorrelationLength do
     if n < 2 do
       {:error, :insufficient_points}
     else
-      # Use more numerically stable formulation
       mean_x = Enum.sum(distances) / n
       mean_y = Enum.sum(log_mis) / n
 
