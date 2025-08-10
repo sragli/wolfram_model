@@ -50,6 +50,8 @@ be found at <https://hexdocs.pm/wolfram_model>.
 ### Emergent Analysis
 
 * Measures complexity, growth rates, clustering
+* Uses an information-theoretic approach to measure spatial coherence (Correlation Length,
+  the distance between regions where Mutual Information drops to 1/e of its maximum)
 * Tracks how simple rules lead to complex structures
 * Analyzes diameter and connectivity patterns
 

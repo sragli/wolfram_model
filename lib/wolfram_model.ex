@@ -131,17 +131,11 @@ defmodule WolframModel do
     hg = model.hypergraph
     stats = Hypergraph.stats(hg)
 
-    # Look for emergent patterns
-    clustering = calculate_clustering_coefficient(hg)
-    diameter = estimate_diameter(hg)
-    growth_rate = calculate_growth_rate(model)
-
     Map.merge(stats, %{
-      clustering_coefficient: clustering,
-      estimated_diameter: diameter,
-      growth_rate: growth_rate,
-      # TODO More realistic complexity measure
-      complexity_measure: stats.vertex_count * stats.hyperedge_count,
+      clustering_coefficient: calculate_clustering_coefficient(hg),
+      estimated_diameter: estimate_diameter(hg),
+      growth_rate: calculate_growth_rate(model),
+      complexity_measure: calculate_complexity(hg),
       evolution_generation: model.generation
     })
   end
@@ -151,11 +145,10 @@ defmodule WolframModel do
   """
   @spec causal_network_data(t()) :: %{nodes: [map()], edges: [map()]}
   def causal_network_data(model) do
-    events = model.causal_network
+    events = Enum.with_index(model.causal_network)
 
     nodes =
       events
-      |> Enum.with_index()
       |> Enum.map(fn {event, idx} ->
         %{
           id: idx,
@@ -166,8 +159,8 @@ defmodule WolframModel do
       end)
 
     edges =
-      for {e1, idx1} <- Enum.with_index(events),
-          {e2, idx2} <- Enum.with_index(events),
+      for {e1, idx1} <- events,
+          {e2, idx2} <- events,
           idx1 < idx2,
           causally_related?(e1, e2) do
         %{
@@ -321,7 +314,7 @@ defmodule WolframModel do
       generation: model.generation + 1,
       rule: rule,
       matched_hyperedges: match_data.matched_hyperedges,
-      # Could be more sophisticated
+      # TODO Could be more sophisticated
       position: :global
     }
 
@@ -362,8 +355,9 @@ defmodule WolframModel do
       not Enum.empty?(
         for e1 <- event1.matched_hyperedges,
             e2 <- event2.matched_hyperedges,
-            do: MapSet.to_list(MapSet.intersection(e1, e2))
-        |> List.flatten()
+            do:
+              MapSet.to_list(MapSet.intersection(e1, e2))
+              |> List.flatten()
       )
   end
 
@@ -372,6 +366,17 @@ defmodule WolframModel do
     vertices = Hypergraph.vertices(hg)
     # Placeholder
     if length(vertices) < 3, do: 0.0, else: 0.5
+  end
+
+  defp calculate_complexity(hg) do
+    case CorrelationLength.compute(hg) do
+      {:ok, correlation_length} ->
+        correlation_length
+
+      _ ->
+        # Not enough data to calculate Correlation Length
+        0
+    end
   end
 
   defp estimate_diameter(hg) do
