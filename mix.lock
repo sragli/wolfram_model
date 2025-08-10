@@ -1,0 +1,3 @@
+%{
+  "hypergraph": {:git, "https://github.com/sragli/hypergraph.git", "8568674b1ac704a11135da15add7c58fde0f3722", []},
+}

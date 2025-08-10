@@ -1,0 +1,720 @@
+# Wolfram Model: Causal Networks and Multiway Evolution
+
+```elixir
+Mix.install([
+  {:jason, "~> 1.4"},
+  {:kino, "~> 0.12"},
+  {:kino_vega_lite, "~> 0.1"},
+  {:vega_lite, "~> 0.1"},
+  {:wolfram_model, path: __DIR__}
+])
+```
+
+## Introduction
+
+This Livebook demonstrates Stephen Wolfram's model of fundamental physics through interactive visualizations. We'll explore how simple rules can create complex causal networks and branching multiway evolution paths.
+
+## Visualization Helper Module
+
+```elixir
+defmodule WolframViz do
+  @doc """
+  Converts multiway evolution tree to visualization data
+  """
+  def multiway_tree_data(tree, level \\ 0, parent_id \\ nil, position \\ 0) do
+    current_id = "node_#{level}_#{position}"
+    stats = Hypergraph.stats(tree.model.hypergraph)
+    
+    current_node = %{
+      id: current_id,
+      label: "Gen #{tree.model.generation}",
+      generation: tree.model.generation,
+      vertices: stats.vertex_count,
+      hyperedges: stats.hyperedge_count,
+      level: level,
+      x: position * 150 + 100,
+      y: level * 100 + 50,
+      type: if(level == 0, do: "root", else: "state"),
+      size: max(80, stats.vertex_count * 10)
+    }
+    
+    parent_edge = if parent_id do
+      [%{source: parent_id, target: current_id, type: "evolution"}]
+    else
+      []
+    end
+    
+    # Process children
+    {child_nodes, child_edges} = 
+      tree.children
+      |> Enum.with_index()
+      |> Enum.reduce({[], []}, fn {child, idx}, {nodes_acc, edges_acc} ->
+        child_pos = position * length(tree.children) + idx
+        {child_nodes, child_edges} = multiway_tree_data(child, level + 1, current_id, child_pos)
+        {nodes_acc ++ child_nodes, edges_acc ++ child_edges}
+      end)
+    
+    nodes = [current_node | child_nodes]
+    edges = parent_edge ++ child_edges
+    
+    {nodes, edges}
+  end
+  
+  @doc """
+  Creates data for hypergraph state visualization
+  """
+  def hypergraph_state_data(model) do
+    hg = model.hypergraph
+    vertices = Hypergraph.vertices(hg)
+    hyperedges = Hypergraph.hyperedges(hg)
+    
+    # Create vertex nodes
+    vertex_nodes = 
+      vertices
+      |> Enum.with_index()
+      |> Enum.map(fn {vertex, idx} ->
+        %{
+          id: "v_#{vertex}",
+          label: to_string(vertex),
+          type: "vertex",
+          x: 100 + rem(idx, 8) * 80,
+          y: 100 + div(idx, 8) * 80,
+          size: 60
+        }
+      end)
+    
+    # Create hyperedge nodes
+    hyperedge_nodes =
+      hyperedges
+      |> Enum.with_index()
+      |> Enum.map(fn {hyperedge, idx} ->
+        hyperedge_list = MapSet.to_list(hyperedge)
+        %{
+          id: "he_#{idx}",
+          label: "E#{idx}",
+          type: "hyperedge",
+          x: 200 + rem(idx, 6) * 100,
+          y: 250 + div(idx, 6) * 100,
+          size: MapSet.size(hyperedge) * 20,
+          members: Enum.join(hyperedge_list, ", ")
+        }
+      end)
+    
+    # Create links
+    links =
+      hyperedges
+      |> Enum.with_index()
+      |> Enum.flat_map(fn {hyperedge, he_idx} ->
+        hyperedge
+        |> MapSet.to_list()
+        |> Enum.map(fn vertex ->
+          %{
+            source: "v_#{vertex}",
+            target: "he_#{he_idx}",
+            type: "membership"
+          }
+        end)
+      end)
+    
+    nodes = vertex_nodes ++ hyperedge_nodes
+    %{nodes: nodes, links: links}
+  end
+  
+  @doc """
+  Creates evolution timeline data
+  """
+  def evolution_timeline_data(model) do
+    model.evolution_history
+    |> Enum.reverse()
+    |> Enum.with_index()
+    |> Enum.map(fn {hg, generation} ->
+      stats = Hypergraph.stats(hg)
+      %{
+        generation: generation,
+        vertices: stats.vertex_count,
+        hyperedges: stats.hyperedge_count,
+        complexity: stats.vertex_count * stats.hyperedge_count
+      }
+    end)
+  end
+end
+```
+
+## Interactive Universe Creator
+
+```elixir
+steps = 3
+depth = 4
+
+# Store current model for visualizations
+current_model = :ets.new(:wolfram_model, [:set, :public])
+
+initial = WolframModel.complex_universe()
+
+evolved = WolframModel.evolve_steps(initial, steps)
+
+multiway_tree = WolframModel.multiway_explore(initial, depth)
+
+# Store for visualizations
+:ets.insert(current_model, {:evolved, evolved})
+:ets.insert(current_model, {:multiway, multiway_tree})
+
+final_stats = Hypergraph.stats(evolved.hypergraph)
+```
+
+## Causal Network Visualization
+
+This shows how evolution events are causally connected through time:
+
+```elixir
+causal_viz = fn ->
+  case :ets.lookup(current_model, :evolved) do
+    [{:evolved, model}] ->
+      data = WolframModel.causal_network_data(model)
+      
+      # Create the causal network chart
+      VegaLite.new(width: 700, height: 400, title: "Causal Network of Evolution Events")
+      |> VegaLite.data_from_values(data.nodes)
+      |> VegaLite.mark(:circle, stroke: "black", strokeWidth: 2)
+      |> VegaLite.encode_field(:x, "x", type: :quantitative, 
+          scale: [domain: [0, 800]], axis: [title: "Time Order"])
+      |> VegaLite.encode_field(:y, "y", type: :quantitative, 
+          scale: [domain: [0, 400]], axis: [title: "Generation"])
+      |> VegaLite.encode_field(:color, "rule_name", type: :nominal, 
+          scale: [scheme: "category10"], legend: [title: "Rule Type"])
+      |> VegaLite.encode_field(:size, "size", type: :quantitative, 
+          scale: [range: [100, 400]])
+      |> VegaLite.encode(:tooltip, [
+        [field: "label", type: :nominal, title: "Rule"],
+        [field: "generation", type: :quantitative, title: "Generation"],
+        [field: "rule_name", type: :nominal, title: "Rule Name"]
+      ])
+      
+    [] ->
+      Kino.Markdown.new("**Please create a universe first**")
+  end
+end
+
+causal_viz.()
+```
+
+## Multiway Evolution Tree
+
+This shows all possible evolution paths branching out from the initial state:
+
+```elixir
+multiway_viz = fn ->
+  case :ets.lookup(current_model, :multiway) do
+    [{:multiway, tree}] ->
+      {nodes, _edges} = WolframViz.multiway_tree_data(tree)
+      
+      # Create multiway evolution chart
+      VegaLite.new(width: 1000, height: 600, title: "Multiway Evolution Tree")
+      |> VegaLite.data_from_values(nodes)
+      |> VegaLite.mark(:circle, stroke: "darkblue", strokeWidth: 2)
+      |> VegaLite.encode_field(:x, "x", type: :quantitative, 
+          scale: [domain: [0, 1000]], axis: [title: "Branching Position"])
+      |> VegaLite.encode_field(:y, "y", type: :quantitative, 
+          scale: [domain: [0, 600]], axis: [title: "Evolution Depth"])
+      |> VegaLite.encode_field(:color, "type", type: :nominal, 
+          scale: [domain: ["root", "state"], range: ["gold", "lightblue"]])
+      |> VegaLite.encode_field(:size, "size", type: :quantitative, 
+          scale: [range: [80, 300]])
+      |> VegaLite.encode(:tooltip, [
+        [field: "label", type: :nominal, title: "State"],
+        [field: "vertices", type: :quantitative, title: "Vertices"],
+        [field: "hyperedges", type: :quantitative, title: "Hyperedges"],
+        [field: "generation", type: :quantitative, title: "Generation"]
+      ])
+      
+    [] ->
+      Kino.Markdown.new("**Please create a universe first**")
+  end
+end
+
+multiway_viz.()
+```
+
+## Current Hypergraph State
+
+This shows the current structure of the evolved hypergraph:
+
+```elixir
+state_viz = fn ->
+  case :ets.lookup(current_model, :evolved) do
+    [{:evolved, model}] ->
+      data = WolframViz.hypergraph_state_data(model)
+      
+      VegaLite.new(width: 700, height: 500, title: "Current Hypergraph State")
+      |> VegaLite.data_from_values(data.nodes)
+      |> VegaLite.mark(:circle, stroke: "black", strokeWidth: 1)
+      |> VegaLite.encode_field(:x, "x", type: :quantitative, scale: [domain: [0, 700]])
+      |> VegaLite.encode_field(:y, "y", type: :quantitative, scale: [domain: [0, 500]])
+      |> VegaLite.encode_field(:color, "type", type: :nominal, 
+          scale: [domain: ["vertex", "hyperedge"], range: ["lightgreen", "lightcoral"]])
+      |> VegaLite.encode_field(:shape, "type", type: :nominal,
+          scale: [domain: ["vertex", "hyperedge"], range: ["circle", "square"]])
+      |> VegaLite.encode_field(:size, "size", type: :quantitative, 
+          scale: [range: [60, 200]])
+      |> VegaLite.encode(:tooltip, [
+        [field: "label", type: :nominal, title: "Node"],
+        [field: "type", type: :nominal, title: "Type"],
+        [field: "members", type: :nominal, title: "Members"]
+      ])
+      
+    [] ->
+      Kino.Markdown.new("**Please create a universe first using the form above.**")
+  end
+end
+
+state_viz.()
+```
+
+## Evolution Timeline
+
+This tracks how the universe grows and changes over time:
+
+```elixir
+timeline_viz = fn ->
+  case :ets.lookup(current_model, :evolved) do
+    [{:evolved, model}] ->
+      data = WolframViz.evolution_timeline_data(model)
+      
+      VegaLite.new(width: 600, height: 300, title: "Universe Evolution Timeline")
+      |> VegaLite.data_from_values(data)
+      |> VegaLite.mark(:line, point: true, strokeWidth: 3)
+      |> VegaLite.encode_field(:x, "generation", type: :quantitative, 
+          axis: [title: "Generation"])
+      |> VegaLite.encode_field(:y, "vertices", type: :quantitative, 
+          axis: [title: "Count"], scale: [zero: true])
+      |> VegaLite.encode(:tooltip, [
+        [field: "generation", type: :quantitative],
+        [field: "vertices", type: :quantitative],
+        [field: "hyperedges", type: :quantitative],
+        [field: "complexity", type: :quantitative]
+      ])
+      
+    [] ->
+      Kino.Markdown.new("**Please create a universe first using the form above.**")
+  end
+end
+
+timeline_viz.()
+```
+
+## Complexity Growth Chart
+
+Compare how different measures of complexity evolve:
+
+```elixir
+complexity_viz = fn ->
+  case :ets.lookup(current_model, :evolved) do
+    [{:evolved, model}] ->
+      data = WolframViz.evolution_timeline_data(model)
+      
+      # Transform data for multiple series
+      series_data = 
+        data
+        |> Enum.flat_map(fn point ->
+          [
+            %{generation: point.generation, value: point.vertices, measure: "Vertices"},
+            %{generation: point.generation, value: point.hyperedges, measure: "Hyperedges"},
+            %{generation: point.generation, value: point.complexity / 10, measure: "Complexity/10"}
+          ]
+        end)
+      
+      VegaLite.new(width: 600, height: 350, title: "Complexity Measures Over Time")
+      |> VegaLite.data_from_values(series_data)
+      |> VegaLite.mark(:line, point: true, strokeWidth: 2)
+      |> VegaLite.encode_field(:x, "generation", type: :quantitative, 
+          axis: [title: "Generation"])
+      |> VegaLite.encode_field(:y, "value", type: :quantitative, 
+          axis: [title: "Count"])
+      |> VegaLite.encode_field(:color, "measure", type: :nominal, 
+          scale: [scheme: "category10"], legend: [title: "Measure"])
+      |> VegaLite.encode(:tooltip, [
+        [field: "measure", type: :nominal],
+        [field: "generation", type: :quantitative],
+        [field: "value", type: :quantitative]
+      ])
+      
+    [] ->
+      Kino.Markdown.new("**Please create a universe first using the form above.**")
+  end
+end
+
+complexity_viz.()
+```
+
+## 3D Multiway Evolution Visualization
+
+For a more immersive view of the branching evolution paths:
+
+```elixir
+multiway_3d_viz = fn ->
+  case :ets.lookup(current_model, :multiway) do
+    [{:multiway, tree}] ->
+      {nodes, edges} = WolframViz.multiway_tree_data(tree)
+      
+      # Generate 3D JavaScript visualization
+      Kino.HTML.new("""
+      <div id="multiway-3d" style="width: 800px; height: 600px; border: 2px solid #333; margin: 20px 0;"></div>
+      <div style="margin: 10px 0;">
+        <strong>3D Multiway Evolution:</strong> Mouse to rotate • Scroll to zoom • Gold = Initial state • Blue = Evolution branches
+      </div>
+      
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+      <script>
+        const container = document.getElementById('multiway-3d');
+        if (container && !container.hasChildNodes()) {
+          const scene = new THREE.Scene();
+          scene.background = new THREE.Color(0x0a0a0a);
+          
+          const camera = new THREE.PerspectiveCamera(75, 800/600, 0.1, 2000);
+          camera.position.set(400, 300, 500);
+          
+          const renderer = new THREE.WebGLRenderer({ antialias: true });
+          renderer.setSize(800, 600);
+          container.appendChild(renderer.domElement);
+          
+          // Lighting
+          const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
+          scene.add(ambientLight);
+          const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+          directionalLight.position.set(100, 100, 50);
+          scene.add(directionalLight);
+          
+          // Add nodes
+          const nodeData = #{Jason.encode!(nodes)};
+          const edgeData = #{Jason.encode!(edges)};
+          
+          const nodeObjects = {};
+          
+          nodeData.forEach(node => {
+            const geometry = new THREE.SphereGeometry(node.size / 20, 16, 16);
+            const material = new THREE.MeshLambertMaterial({
+              color: node.type === 'root' ? 0xffd700 : 0x4169e1,
+              transparent: true,
+              opacity: 0.8
+            });
+            const sphere = new THREE.Mesh(geometry, material);
+            
+            // Position in 3D space
+            sphere.position.set(
+              (node.x - 400) * 2, 
+              node.y * 3, 
+              (node.level * 100) - 200
+            );
+            
+            scene.add(sphere);
+            nodeObjects[node.id] = sphere;
+            
+            // Add label
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 128;
+            canvas.height = 32;
+            context.fillStyle = 'white';
+            context.font = 'Bold 14px Arial';
+            context.fillText(node.label, 4, 20);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+            const sprite = new THREE.Sprite(spriteMaterial);
+            sprite.position.copy(sphere.position);
+            sprite.position.y += 30;
+            sprite.scale.set(50, 12, 1);
+            scene.add(sprite);
+          });
+          
+          // Add edges
+          edgeData.forEach(edge => {
+            const sourcePos = nodeObjects[edge.source].position;
+            const targetPos = nodeObjects[edge.target].position;
+            
+            const geometry = new THREE.BufferGeometry().setFromPoints([
+              sourcePos, targetPos
+            ]);
+            const material = new THREE.LineBasicMaterial({
+              color: 0x00ff88,
+              transparent: true,
+              opacity: 0.6
+            });
+            const line = new THREE.Line(geometry, material);
+            scene.add(line);
+          });
+          
+          // Mouse controls
+          let isMouseDown = false;
+          let mouseX = 0, mouseY = 0;
+          let targetRotationX = 0, targetRotationY = 0;
+          
+          container.addEventListener('mousedown', (e) => {
+            isMouseDown = true;
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+          });
+          
+          container.addEventListener('mouseup', () => {
+            isMouseDown = false;
+          });
+          
+          container.addEventListener('mousemove', (e) => {
+            if (!isMouseDown) return;
+            
+            const deltaX = e.clientX - mouseX;
+            const deltaY = e.clientY - mouseY;
+            
+            targetRotationY += deltaX * 0.01;
+            targetRotationX += deltaY * 0.01;
+            
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+          });
+          
+          let zoom = 500;
+          container.addEventListener('wheel', (e) => {
+            zoom += e.deltaY * 0.5;
+            zoom = Math.max(100, Math.min(1000, zoom));
+            e.preventDefault();
+          });
+          
+          // Animation loop
+          function animate() {
+            requestAnimationFrame(animate);
+            
+            // Update camera position
+            camera.position.x = zoom * Math.sin(targetRotationY) * Math.cos(targetRotationX);
+            camera.position.y = zoom * Math.sin(targetRotationX);
+            camera.position.z = zoom * Math.cos(targetRotationY) * Math.cos(targetRotationX);
+            camera.lookAt(0, 0, 0);
+            
+            // Gentle rotation
+            scene.rotation.y += 0.002;
+            
+            renderer.render(scene, camera);
+          }
+          
+          animate();
+        }
+      </script>
+      """)
+      
+    [] ->
+      Kino.Markdown.new("**Please create a universe first using the form above.**")
+  end
+end
+
+multiway_3d_viz.()
+```
+
+## Rule Application Statistics
+
+Analyze which rules are most frequently applied:
+
+```elixir
+rule_stats_viz = fn ->
+  case :ets.lookup(current_model, :evolved) do
+    [{:evolved, model}] ->
+      # Count rule applications
+      rule_counts = 
+        model.causal_network
+        |> Enum.group_by(& &1.rule.name)
+        |> Enum.map(fn {rule_name, events} ->
+          %{
+            rule: rule_name,
+            count: length(events),
+            percentage: length(events) / max(length(model.causal_network), 1) * 100
+          }
+        end)
+        |> Enum.sort_by(& &1.count, :desc)
+      
+      VegaLite.new(width: 500, height: 300, title: "Rule Application Frequency")
+      |> VegaLite.data_from_values(rule_counts)
+      |> VegaLite.mark(:bar)
+      |> VegaLite.encode_field(:x, "rule", type: :nominal, 
+          axis: [title: "Rule Name", labelAngle: -45])
+      |> VegaLite.encode_field(:y, "count", type: :quantitative, 
+          axis: [title: "Applications"])
+      |> VegaLite.encode_field(:color, "rule", type: :nominal, 
+          scale: [scheme: "set2"])
+      |> VegaLite.encode(:tooltip, [
+        [field: "rule", type: :nominal, title: "Rule"],
+        [field: "count", type: :quantitative, title: "Count"],
+        [field: "percentage", type: :quantitative, title: "Percentage", format: ".1f"]
+      ])
+      
+    [] ->
+      Kino.Markdown.new("**Please create a universe first using the form above.**")
+  end
+end
+
+rule_stats_viz.()
+```
+
+## Interactive Rule Explorer
+
+Try different rule combinations and see how they affect evolution:
+
+```elixir
+# Rule selection inputs
+binary_split = Kino.Input.checkbox("Binary Split Rule", default: true)
+triangle_completion = Kino.Input.checkbox("Triangle Completion Rule", default: true)
+triangle_split = Kino.Input.checkbox("Triangle Split Rule", default: false)
+edge_duplication = Kino.Input.checkbox("Edge Duplication Rule", default: false)
+
+custom_steps = Kino.Input.number("Evolution Steps", default: 8)
+
+rule_form = Kino.Control.form([
+  binary_split: binary_split,
+  triangle_completion: triangle_completion,
+  triangle_split: triangle_split,
+  edge_duplication: edge_duplication,
+  steps: custom_steps
+], submit: "Run Custom Evolution")
+
+Kino.render(rule_form)
+
+custom_evolution = 
+  rule_form
+  |> Kino.Control.stream()
+  |> Kino.animate(fn %{data: data} ->
+    # Build custom rule set
+    all_rules = WolframModel.basic_rules()
+    selected_rules = []
+    
+    selected_rules = if data.binary_split, do: [Enum.at(all_rules, 0) | selected_rules], else: selected_rules
+    selected_rules = if data.triangle_completion, do: [Enum.at(all_rules, 1) | selected_rules], else: selected_rules
+    selected_rules = if data.triangle_split, do: [Enum.at(all_rules, 2) | selected_rules], else: selected_rules
+    selected_rules = if data.edge_duplication, do: [Enum.at(all_rules, 3) | selected_rules], else: selected_rules
+    
+    if length(selected_rules) == 0 do
+      Kino.Markdown.new("**Please select at least one rule to enable evolution.**")
+    else
+      # Create and evolve universe with custom rules
+      initial_hg = 
+        Hypergraph.new()
+        |> Hypergraph.add_hyperedge([1, 2])
+        |> Hypergraph.add_hyperedge([2, 3])
+      
+      custom_model = WolframModel.new(initial_hg, selected_rules)
+      evolved_custom = WolframModel.evolve_steps(custom_model, data.steps)
+      
+      final_stats = Hypergraph.stats(evolved_custom.hypergraph)
+      
+      # Store for visualization
+      :ets.insert(current_model, {:custom, evolved_custom})
+      
+      Kino.Markdown.new("""
+      **Selected Rules:** #{Enum.map(selected_rules, & &1.name) |> Enum.join(", ")}
+      **Evolution Steps:** #{data.steps}
+      
+      **Results:**
+      - Final Generation: #{evolved_custom.generation}
+      - Vertices: #{final_stats.vertex_count}
+      - Hyperedges: #{final_stats.hyperedge_count}
+      - Causal Events: #{length(evolved_custom.causal_network)}
+      - Avg Hyperedge Size: #{Float.round(final_stats.avg_hyperedge_size, 2)}
+      """)
+    end
+  end)
+```
+
+## Emergent Patterns Analysis
+
+Look for interesting patterns that emerge from simple rules:
+
+```elixir
+pattern_analysis = fn ->
+  case :ets.lookup(current_model, :evolved) do
+    [{:evolved, model}] ->
+      hg = model.hypergraph
+      vertices = Hypergraph.vertices(hg)
+      hyperedges = Hypergraph.hyperedges(hg)
+      
+      # Analyze patterns
+      hyperedge_sizes = Enum.map(hyperedges, &MapSet.size/1)
+      size_distribution = Enum.frequencies(hyperedge_sizes)
+      
+      # Look for specific patterns
+      triangles = Enum.count(hyperedges, fn he -> MapSet.size(he) == 3 end)
+      pairs = Enum.count(hyperedges, fn he -> MapSet.size(he) == 2 end)
+      larger = Enum.count(hyperedges, fn he -> MapSet.size(he) > 3 end)
+      
+      # Connectivity analysis
+      total_connections = Enum.sum(hyperedge_sizes)
+      avg_connectivity = if length(vertices) > 0, do: total_connections / length(vertices), else: 0
+      
+      Kino.Markdown.new("""
+      ## Emergent Pattern Analysis
+      
+      **Structural Patterns:**
+      - Pairwise connections (edges): #{pairs}
+      - Triangular relationships: #{triangles}
+      - Higher-order structures (4+ vertices): #{larger}
+      
+      **Connectivity:**
+      - Average vertex connectivity: #{Float.round(avg_connectivity, 2)}
+      - Total hyperedge-vertex connections: #{total_connections}
+      - Network density: #{if length(vertices) > 1, do: Float.round(total_connections / (length(vertices) * (length(vertices) - 1)), 3), else: 0}
+      
+      **Size Distribution:**
+      #{Enum.map(size_distribution, fn {size, count} -> 
+        "- #{size}-vertex hyperedges: #{count}"
+      end) |> Enum.join("\n")}
+      
+      **Observations:**
+      #{cond do
+        triangles > pairs -> "• Triangle formation dominates - suggesting clustering behavior"
+        larger > 0 -> "• Higher-order structures emerged - complex multi-way relationships"
+        pairs == length(hyperedges) -> "• Only pairwise connections - graph-like structure"
+        true -> "• Mixed connectivity patterns emerged"
+      end}
+      
+      #{if model.generation > 5 do
+        "• Evolution reached #{model.generation} generations - significant complexity development"
+      else
+        "• Early stage evolution - basic pattern formation"
+      end}
+      """)
+      
+    [] ->
+      Kino.Markdown.new("**Please create a universe first using the form above.**")
+  end
+end
+
+pattern_analysis.()
+```
+
+## Theoretical Connections
+
+### Understanding the Wolfram Model Through Visualization
+
+#### What We're Seeing
+
+**Causal Networks** show how each rule application creates events that influence future evolution. This represents Wolfram's idea that spacetime emerges from causal relationships between computational events.
+
+**Multiway Evolution** displays the "quantum multiverse" - all possible ways the universe could evolve from the same starting point. This connects to quantum mechanics through parallel evolution paths.
+
+**Hypergraph Growth** demonstrates how simple local rules can create complex global structures, potentially explaining how the complexity of physics emerges from simple computational foundations.
+
+### Key Insights from Wolfram's Theory
+
+1. **Computational Irreducibility**: You cannot predict the final state without running the computation - just like our visualizations show unexpected emergent patterns.
+
+2. **Emergent Spacetime**: The connectivity structure of the hypergraph represents space, while the sequence of rule applications represents time.
+
+3. **Causal Invariance**: Different sequences of rule applications that maintain causal relationships might correspond to relativity's coordinate invariance.
+
+4. **Quantum Superposition**: The multiway graph represents all possible quantum states evolving simultaneously until "observation" collapses to a specific path.
+
+### Experimental Questions
+
+Try these experiments with the interactive controls:
+
+* **Does complexity always increase?** Try different rule combinations and see if some lead to simplification.
+* **Do certain rules create more branching?** Compare multiway trees for different rule sets.
+* **Can you find cyclic patterns?** Look for hypergraph states that repeat after several generations.
+* **What creates the most causal density?** Which rules generate the most interconnected causal networks?
+
+This computational universe laboratory lets you explore the fundamental question: **Could reality itself be the result of simple computational rules operating on a hypergraph?**
