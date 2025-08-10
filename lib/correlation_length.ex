@@ -1,6 +1,6 @@
 defmodule CorrelationLength do
   @moduledoc """
-  Calculates correlation length for Wolfram Model using Mutual Information.
+  Optimized correlation length calculator for Wolfram Models using mutual information approach.
 
   The correlation length measures how far structural information propagates
   in the hypergraph by calculating mutual information between distant regions.
@@ -20,15 +20,19 @@ defmodule CorrelationLength do
   - {:ok, correlation_length} | {:error, reason}
   """
   def compute(hypergraph, max_distance \\ 10, region_size \\ 5, samples \\ 100) do
-    distances = Range.to_list(1..max_distance)
+    # Pre-compute expensive operations once
+    vertex_set = MapSet.new(Hypergraph.vertices(hypergraph))
+    adjacency_map = build_adjacency_map(hypergraph)
+
+    distances = 1..max_distance |> Enum.to_list()
 
     mutual_info_by_distance =
       distances
-      |> Enum.map(fn d ->
-        {d, calculate_mutual_info_at_distance(hypergraph, d, region_size, samples)}
-      end)
-      # Filter out zero MI values
-      |> Enum.filter(fn {_d, mi} -> mi > 0 end)
+      |> Task.async_stream(fn d ->
+        {d, calculate_mutual_info_at_distance(vertex_set, adjacency_map, d, region_size, samples)}
+      end, ordered: false, timeout: :infinity)
+      |> Enum.map(fn {:ok, result} -> result end)
+      |> Enum.filter(fn {_d, mi} -> mi > 0 end)  # Filter out zero MI values
 
     case fit_exponential_decay(mutual_info_by_distance) do
       {:ok, correlation_length} -> {:ok, correlation_length}
@@ -36,276 +40,253 @@ defmodule CorrelationLength do
     end
   end
 
-  # Calculate Mutual Information between regions at a specific distance.
-  defp calculate_mutual_info_at_distance(hypergraph, distance, region_size, samples) do
-    vertex_distances = build_distance_matrix(hypergraph)
+  @doc """
+  Build adjacency map for efficient neighbor lookup (replaces distance matrix).
+  """
+  defp build_adjacency_map(hypergraph) do
+    hyperedges = Hypergraph.hyperedges(hypergraph)
 
-    region_pairs =
-      sample_region_pairs_at_distance(
-        hypergraph,
-        vertex_distances,
-        distance,
-        region_size,
-        samples
-      )
-
-    if length(region_pairs) < 10 do
-      # Not enough samples for reliable MI calculation
-      0.0
-    else
-      region_pairs
-      |> Enum.map(fn {region1, region2} ->
-        calculate_mutual_information(region1, region2, hypergraph)
-      end)
-      |> Enum.sum()
-      |> Kernel./(length(region_pairs))
-    end
-  end
-
-  # Build distance matrix using shortest path in hypergraph 2-skeleton.
-  defp build_distance_matrix(hypergraph) do
-    vertices = Hypergraph.vertices(hypergraph)
-    edges = hypergraph_to_graph_edges(hypergraph)
-
-    # Floyd-Warshall algorithm for all-pairs shortest paths
-    initial_distances = initialize_distances(vertices, edges)
-    floyd_warshall(initial_distances, vertices)
-  end
-
-  # Convert hypergraph to graph edges (2-skeleton).
-  defp hypergraph_to_graph_edges(hypergraph) do
-    hypergraph
-    |> Hypergraph.hyperedges()
-    |> Enum.flat_map(fn hyperedge ->
-      # Create pairwise connections within each hyperedge
-      vertices_in_edge = hyperedge
-      for v1 <- vertices_in_edge, v2 <- vertices_in_edge, v1 != v2, do: {v1, v2}
-    end)
-    |> Enum.uniq()
-  end
-
-  defp initialize_distances(vertices, edges) do
-    # Initialize with infinity, 0 for self, 1 for direct edges
-    for v1 <- vertices, v2 <- vertices, into: %{} do
-      cond do
-        v1 == v2 -> {{v1, v2}, 0}
-        {v1, v2} in edges -> {{v1, v2}, 1}
-        true -> {{v1, v2}, :infinity}
-      end
-    end
-  end
-
-  defp floyd_warshall(distances, vertices) do
-    Enum.reduce(vertices, distances, fn k, dist_acc ->
-      Enum.reduce(vertices, dist_acc, fn i, dist_acc2 ->
-        Enum.reduce(vertices, dist_acc2, fn j, dist_acc3 ->
-          d_ik = Map.get(dist_acc3, {i, k}, :infinity)
-          d_kj = Map.get(dist_acc3, {k, j}, :infinity)
-          d_ij = Map.get(dist_acc3, {i, j}, :infinity)
-
-          new_distance =
-            case {d_ik, d_kj} do
-              {:infinity, _} -> d_ij
-              {_, :infinity} -> d_ij
-              {a, b} -> min(d_ij, a + b)
-            end
-
-          Map.put(dist_acc3, {i, j}, new_distance)
+    # Build adjacency list more efficiently
+    hyperedges
+    |> Enum.reduce(%{}, fn hyperedge, acc ->
+      # Add all pairwise connections within hyperedge
+      hyperedge
+      |> Enum.reduce(acc, fn vertex, acc2 ->
+        neighbors = MapSet.delete(hyperedge, vertex)  # Remove self
+        Map.update(acc2, vertex, MapSet.new(neighbors), fn existing ->
+          MapSet.union(existing, MapSet.new(neighbors))
         end)
       end)
     end)
   end
 
-  # Sample pairs of regions that are approximately at the target distance.
-  defp sample_region_pairs_at_distance(
-         hypergraph,
-         distances,
-         target_distance,
-         region_size,
-         samples
-       ) do
-    vertices = Hypergraph.vertices(hypergraph)
-
-    1..samples
-    |> Enum.map(fn _ ->
-      region1 = sample_region(vertices, region_size)
-      region2 = find_distant_region(region1, vertices, distances, target_distance, region_size)
-      {region1, region2}
+  @doc """
+  Calculate mutual information between regions at a specific distance using BFS.
+  """
+  defp calculate_mutual_info_at_distance(vertex_set, adjacency_map, distance, region_size, samples) do
+    # Use streaming to avoid building large intermediate collections
+    region_pairs = Stream.repeatedly(fn ->
+      sample_region_pair_at_distance(vertex_set, adjacency_map, distance, region_size)
     end)
-    |> Enum.filter(fn {r1, r2} -> length(r1) > 0 and length(r2) > 0 end)
+    |> Stream.take(samples)
+    |> Stream.filter(fn {r1, r2} -> length(r1) > 0 and length(r2) > 0 end)
+    |> Enum.take(samples)
+
+    if length(region_pairs) < 10 do
+      0.0  # Not enough samples for reliable MI calculation
+    else
+      # Use parallel processing for MI calculation
+      region_pairs
+      |> Task.async_stream(fn {region1, region2} ->
+        calculate_mutual_information_optimized(region1, region2, adjacency_map)
+      end, ordered: false)
+      |> Enum.map(fn {:ok, mi} -> mi end)
+      |> Enum.sum()
+      |> Kernel./(length(region_pairs))
+    end
   end
 
+  @doc """
+  Sample a region pair at target distance using BFS (much faster than Floyd-Warshall).
+  """
+  defp sample_region_pair_at_distance(vertex_set, adjacency_map, target_distance, region_size) do
+    vertices = MapSet.to_list(vertex_set)
+    region1 = sample_region(vertices, region_size)
+
+    # Use BFS to find vertices at approximately target distance
+    distant_vertices = find_vertices_at_distance_bfs(region1, adjacency_map, target_distance, vertex_set)
+    region2 = sample_region(distant_vertices, region_size)
+
+    {region1, region2}
+  end
+
+  @doc """
+  BFS to find vertices at specific distance (replaces expensive all-pairs shortest path).
+  """
+  defp find_vertices_at_distance_bfs(source_region, adjacency_map, target_distance, all_vertices) do
+    # Initialize BFS from all vertices in source region
+    initial_queue = Enum.map(source_region, fn v -> {v, 0} end)
+    initial_visited = MapSet.new(source_region)
+
+    bfs_distance_search(initial_queue, initial_visited, adjacency_map, target_distance, all_vertices, [])
+  end
+
+  defp bfs_distance_search([], _visited, _adjacency_map, _target_distance, _all_vertices, result) do
+    result
+  end
+
+  defp bfs_distance_search([{current, distance} | rest], visited, adjacency_map, target_distance, all_vertices, result) do
+    cond do
+      distance == target_distance ->
+        # Found vertex at target distance
+        bfs_distance_search(rest, visited, adjacency_map, target_distance, all_vertices, [current | result])
+
+      distance < target_distance ->
+        # Continue BFS
+        neighbors = Map.get(adjacency_map, current, MapSet.new())
+        new_neighbors = MapSet.difference(neighbors, visited)
+
+        new_queue = Enum.map(MapSet.to_list(new_neighbors), fn n -> {n, distance + 1} end)
+        new_visited = MapSet.union(visited, new_neighbors)
+
+        bfs_distance_search(rest ++ new_queue, new_visited, adjacency_map, target_distance, all_vertices, result)
+
+      true ->
+        # Skip vertices beyond target distance
+        bfs_distance_search(rest, visited, adjacency_map, target_distance, all_vertices, result)
+    end
+  end
+
+  defp sample_region(vertices, size) when length(vertices) <= size, do: vertices
   defp sample_region(vertices, size) do
     vertices
     |> Enum.shuffle()
-    |> Enum.take(min(size, length(vertices)))
+    |> Enum.take(size)
   end
 
-  defp find_distant_region(
-         reference_region,
-         all_vertices,
-         distances,
-         target_distance,
-         region_size
-       ) do
-    # Find vertices approximately at target distance from reference region
-    distant_candidates =
-      all_vertices
-      |> Enum.filter(fn v ->
-        avg_distance = calculate_avg_distance_to_region(v, reference_region, distances)
-        # Allow some tolerance
-        abs(avg_distance - target_distance) <= 1
-      end)
+  @doc """
+  Optimized mutual information calculation using pre-computed features and efficient distributions.
+  """
+  defp calculate_mutual_information_optimized(region1, region2, adjacency_map) do
+    # Pre-compute features once
+    features1 = extract_region_features_optimized(region1, adjacency_map)
+    features2 = extract_region_features_optimized(region2, adjacency_map)
 
-    sample_region(distant_candidates, region_size)
+    # Use more efficient distribution calculation
+    calculate_mutual_info_from_features(features1, features2)
   end
 
-  defp calculate_avg_distance_to_region(vertex, region, distances) do
-    region_distances =
-      region
-      |> Enum.map(fn r_vertex ->
-        case Map.get(distances, {vertex, r_vertex}) do
-          # Large finite number
-          :infinity -> 999
-          d -> d
-        end
-      end)
-
-    if length(region_distances) > 0 do
-      Enum.sum(region_distances) / length(region_distances)
-    else
-      999
-    end
-  end
-
-  # Calculate Mutual Information between two regions based on structural features.
-  defp calculate_mutual_information(region1, region2, hypergraph) do
-    # Extract structural features for each region
-    features1 = extract_region_features(region1, hypergraph)
-    features2 = extract_region_features(region2, hypergraph)
-
-    # Calculate joint and marginal distributions
-    joint_dist = calculate_joint_distribution(features1, features2)
-    marginal1 = calculate_marginal_distribution(features1)
-    marginal2 = calculate_marginal_distribution(features2)
-
-    # Compute Mutual Information: I(X;Y) = ΣΣ p(x,y) log(p(x,y) / (p(x)p(y)))
-    joint_dist
-    |> Enum.map(fn {{f1, f2}, joint_prob} ->
-      marginal_prob1 = Map.get(marginal1, f1, 0)
-      marginal_prob2 = Map.get(marginal2, f2, 0)
-
-      if joint_prob > 0 and marginal_prob1 > 0 and marginal_prob2 > 0 do
-        joint_prob * :math.log(joint_prob / (marginal_prob1 * marginal_prob2))
-      else
-        0
-      end
-    end)
-    |> Enum.sum()
-  end
-
-  # Extract structural features from a region (e.g., degree distribution, hyperedge participation).
-  defp extract_region_features(region, hypergraph) do
-    hyperedges = Hypergraph.hyperedges(hypergraph)
-
+  @doc """
+  Optimized feature extraction using adjacency map instead of scanning all hyperedges.
+  """
+  defp extract_region_features_optimized(region, adjacency_map) do
     region
     |> Enum.map(fn vertex ->
-      # Count hyperedges containing this vertex
-      degree =
-        hyperedges
-        |> Enum.count(fn hyperedge -> vertex in hyperedge end)
+      # Use adjacency map for O(1) degree lookup
+      degree = case Map.get(adjacency_map, vertex) do
+        nil -> 0
+        neighbors -> MapSet.size(neighbors)
+      end
 
-      # Bin the degree into categories for discrete distribution
-      cond do
-        degree == 0 -> :isolated
-        degree <= 2 -> :low_degree
-        degree <= 5 -> :medium_degree
-        true -> :high_degree
+      # More granular binning for better information content
+      categorize_degree(degree)
+    end)
+  end
+
+  defp categorize_degree(degree) do
+    cond do
+      degree == 0 -> :isolated
+      degree == 1 -> :leaf
+      degree <= 3 -> :low_degree
+      degree <= 6 -> :medium_degree
+      degree <= 10 -> :high_degree
+      true -> :very_high_degree
+    end
+  end
+
+  @doc """
+  More efficient mutual information calculation using frequency maps.
+  """
+  defp calculate_mutual_info_from_features(features1, features2) do
+    # Pre-compute frequencies
+    freq1 = Enum.frequencies(features1)
+    freq2 = Enum.frequencies(features2)
+
+    n1 = length(features1)
+    n2 = length(features2)
+    total = n1 * n2
+
+    # Build joint frequency map more efficiently
+    joint_freq =
+      for f1 <- Map.keys(freq1), f2 <- Map.keys(freq2), into: %{} do
+        joint_count = freq1[f1] * freq2[f2]
+        {{f1, f2}, joint_count}
+      end
+
+    # Calculate MI using pre-computed frequencies
+    joint_freq
+    |> Enum.reduce(0.0, fn {{f1, f2}, joint_count}, acc ->
+      if joint_count > 0 do
+        joint_prob = joint_count / total
+        marginal_prob1 = freq1[f1] / n1
+        marginal_prob2 = freq2[f2] / n2
+
+        mi_contribution = joint_prob * :math.log(joint_prob / (marginal_prob1 * marginal_prob2))
+        acc + mi_contribution
+      else
+        acc
       end
     end)
   end
 
-  defp calculate_joint_distribution(features1, features2) do
-    # Create all combinations and count occurrences
-    total = length(features1) * length(features2)
-
-    combinations = for f1 <- features1, f2 <- features2, do: {f1, f2}
-
-    combinations
-    |> Enum.frequencies()
-    |> Enum.map(fn {combo, count} -> {combo, count / total} end)
-    |> Map.new()
-  end
-
-  defp calculate_marginal_distribution(features) do
-    total = length(features)
-
-    features
-    |> Enum.frequencies()
-    |> Enum.map(fn {feature, count} -> {feature, count / total} end)
-    |> Map.new()
-  end
-
-  # Fit exponential decay to Mutual Information data and extract Correlation Length.
-  # I(d) ≈ I(0) * exp(-d/ξ), so ξ is the Correlation Length.
-  defp fit_exponential_decay(data_points) when length(data_points) < 3 do
-    {:error, :insufficient_data}
-  end
-
+  @doc """
+  Optimized exponential decay fitting with better numerical stability.
+  """
   defp fit_exponential_decay(data_points) do
-    # Simple linear regression on log scale: log(I) = log(I0) - d/ξ
-    {distances, mutual_infos} = Enum.unzip(data_points)
-
-    # Filter out zero or negative MI values
-    valid_points =
-      Enum.zip(distances, mutual_infos)
-      |> Enum.filter(fn {_d, mi} -> mi > 0 end)
-
-    if length(valid_points) < 3 do
-      {:error, :insufficient_positive_data}
+    if length(data_points) < 3 do
+      {:error, :insufficient_data}
     else
-      {valid_distances, valid_mis} = Enum.unzip(valid_points)
-      log_mis = Enum.map(valid_mis, &:math.log/1)
+      # Filter and prepare data
+      valid_points =
+        data_points
+        |> Enum.filter(fn {_d, mi} -> mi > 1.0e-10 end)  # More robust threshold
+        |> Enum.sort_by(fn {d, _mi} -> d end)  # Sort by distance
 
-      # Linear regression: log(MI) = a + b*d, where b = -1/ξ
-      correlation_length =
-        case linear_regression(valid_distances, log_mis) do
-          {:ok, {_intercept, slope}} when slope < 0 ->
-            {:ok, -1.0 / slope}
-
-          {:ok, {_intercept, slope}} when slope >= 0 ->
-            {:error, :no_decay}
-
-          {:error, reason} ->
-            {:error, reason}
+      if length(valid_points) < 3 do
+        {:error, :insufficient_positive_data}
+      else
+        case linear_regression_optimized(valid_points) do
+          {:ok, correlation_length} -> {:ok, correlation_length}
+          {:error, reason} -> {:error, reason}
         end
-
-      correlation_length
+      end
     end
   end
 
-  # Simple linear regression: y = a + bx
-  # Returns {:ok, {intercept, slope}} or {:error, reason}
-  defp linear_regression(x_values, _y_values) when length(x_values) < 2 do
-    {:error, :insufficient_points}
-  end
+  @doc """
+  Optimized linear regression with better numerical stability.
+  """
+  defp linear_regression_optimized(data_points) do
+    {distances, mutual_infos} = Enum.unzip(data_points)
 
-  defp linear_regression(x_values, y_values) do
-    n = length(x_values)
+    # Use log transformation with numerical stability
+    log_mis =
+      mutual_infos
+      |> Enum.map(fn mi ->
+        if mi > 0, do: :math.log(mi), else: :math.log(1.0e-10)
+      end)
 
-    sum_x = Enum.sum(x_values)
-    sum_y = Enum.sum(y_values)
-    sum_xy = Enum.zip(x_values, y_values) |> Enum.map(fn {x, y} -> x * y end) |> Enum.sum()
-    sum_x2 = x_values |> Enum.map(fn x -> x * x end) |> Enum.sum()
+    n = length(distances)
 
-    denominator = n * sum_x2 - sum_x * sum_x
-
-    if abs(denominator) < 1.0e-10 do
-      {:error, :singular_matrix}
+    if n < 2 do
+      {:error, :insufficient_points}
     else
-      slope = (n * sum_xy - sum_x * sum_y) / denominator
-      intercept = (sum_y - slope * sum_x) / n
-      {:ok, {intercept, slope}}
+      # Use more numerically stable formulation
+      mean_x = Enum.sum(distances) / n
+      mean_y = Enum.sum(log_mis) / n
+
+      numerator =
+        Enum.zip(distances, log_mis)
+        |> Enum.map(fn {x, y} -> (x - mean_x) * (y - mean_y) end)
+        |> Enum.sum()
+
+      denominator =
+        distances
+        |> Enum.map(fn x -> (x - mean_x) * (x - mean_x) end)
+        |> Enum.sum()
+
+      if abs(denominator) < 1.0e-10 do
+        {:error, :singular_matrix}
+      else
+        slope = numerator / denominator
+
+        if slope >= -1.0e-10 do  # No significant decay
+          {:error, :no_decay}
+        else
+          correlation_length = -1.0 / slope
+          {:ok, correlation_length}
+        end
+      end
     end
   end
 end
