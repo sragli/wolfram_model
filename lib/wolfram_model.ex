@@ -102,14 +102,6 @@ defmodule WolframModel do
   end
 
   @doc """
-  Helper function to count multiway states.
-  """
-  @spec count_multiway_states(%{model: t(), children: [map()]}) :: non_neg_integer()
-  def count_multiway_states(tree) do
-    1 + Enum.sum(Enum.map(tree.children, &count_multiway_states/1))
-  end
-
-  @doc """
   Analyzes the causal structure of evolution events.
   """
   @spec analyze_causality(t()) :: map()
@@ -126,7 +118,7 @@ defmodule WolframModel do
       causal_density:
         if(length(events) > 1,
           do: length(dependencies) / (length(events) * (length(events) - 1)),
-          else: 0
+          else: 0.0
         )
     }
   end
@@ -366,8 +358,13 @@ defmodule WolframModel do
   # rule application involves that same hyperedge (or elements connected to it), there's a
   # causal relationship between these events.
   defp causally_related?(event1, event2) do
-    # TODO Improve causality handling: in this implementation, events are related if they follow each other
-    event1.generation < event2.generation
+    event1.generation < event2.generation and
+      not Enum.empty?(
+        for e1 <- event1.matched_hyperedges,
+            e2 <- event2.matched_hyperedges,
+            do: MapSet.to_list(MapSet.intersection(e1, e2))
+        |> List.flatten()
+      )
   end
 
   defp calculate_clustering_coefficient(hg) do
