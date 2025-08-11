@@ -70,7 +70,7 @@ defmodule CorrelationLength do
     if length(region_pairs) < 10 do
       0.0  # Not enough samples for reliable MI calculation
     else
-      # Use parallel processing for MI calculation
+      # Parallelized MI calculation
       region_pairs
       |> Task.async_stream(fn {region1, region2} ->
         calculate_mutual_information(region1, region2, adjacency_map)
@@ -86,7 +86,6 @@ defmodule CorrelationLength do
     vertices = MapSet.to_list(vertex_set)
     region1 = sample_region(vertices, region_size)
 
-    # Use BFS to find vertices at approximately target distance
     distant_vertices = find_vertices_at_distance_bfs(region1, adjacency_map, target_distance, vertex_set)
     region2 = sample_region(distant_vertices, region_size)
 
@@ -143,7 +142,6 @@ defmodule CorrelationLength do
     calculate_mutual_info_from_features(features1, features2)
   end
 
-  # Feature extraction using adjacency map.
   defp extract_region_features(region, adjacency_map) do
     region
     |> Enum.map(fn vertex ->
@@ -153,11 +151,11 @@ defmodule CorrelationLength do
         neighbors -> MapSet.size(neighbors)
       end
 
-      # More granular binning for better information content
       categorize_degree(degree)
     end)
   end
 
+  # Binning for better information content.
   defp categorize_degree(degree) do
     cond do
       degree == 0 -> :isolated
@@ -179,7 +177,6 @@ defmodule CorrelationLength do
     n2 = length(features2)
     total = n1 * n2
 
-    # Build joint frequency map more efficiently
     joint_freq =
       for f1 <- Map.keys(freq1), f2 <- Map.keys(freq2), into: %{} do
         joint_count = freq1[f1] * freq2[f2]
@@ -215,14 +212,14 @@ defmodule CorrelationLength do
     if length(valid_points) < 3 do
       {:error, :insufficient_positive_data}
     else
-      case linear_regression_optimized(valid_points) do
+      case linear_regression(valid_points) do
         {:ok, correlation_length} -> {:ok, correlation_length}
         {:error, reason} -> {:error, reason}
       end
     end
   end
 
-  defp linear_regression_optimized(data_points) do
+  defp linear_regression(data_points) do
     {distances, mutual_infos} = Enum.unzip(data_points)
 
     log_mis =
