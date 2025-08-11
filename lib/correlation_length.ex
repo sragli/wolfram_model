@@ -8,10 +8,10 @@ defmodule CorrelationLength do
   alias Hypergraph
 
   @doc """
-  Calculate Correlation Length for a hypergraph using Mutual Information decay.
+  Calculates Correlation Length for a hypergraph using Mutual Information decay.
 
   ## Parameters
-  - hypergraph: Map with vertices and hyperedges
+  - hypergraph: Hypergraph
   - max_distance: Maximum distance to consider
   - region_size: Size of regions to compare
   - samples: Number of random region pairs to sample
@@ -40,7 +40,7 @@ defmodule CorrelationLength do
     end
   end
 
-  # Build adjacency map for efficient neighbor lookup.
+  # Builds adjacency map for efficient neighbor lookup.
   defp build_adjacency_map(hypergraph) do
     hyperedges = Hypergraph.hyperedges(hypergraph)
 
@@ -57,7 +57,7 @@ defmodule CorrelationLength do
     end)
   end
 
-  # Calculate Mutual Information between regions at a specific distance using BFS.
+  # Calculates Mutual Information between regions at a specific distance using BFS.
   defp calculate_mutual_info_at_distance(vertex_set, adjacency_map, distance, region_size, samples) do
     # Use streaming to avoid building large intermediate collections
     region_pairs = Stream.repeatedly(fn ->
@@ -81,7 +81,7 @@ defmodule CorrelationLength do
     end
   end
 
-  # Sample a region pair at target distance using BFS.
+  # Samples a region pair at target distance using BFS.
   defp sample_region_pair_at_distance(vertex_set, adjacency_map, target_distance, region_size) do
     vertices = MapSet.to_list(vertex_set)
     region1 = sample_region(vertices, region_size)
@@ -92,7 +92,6 @@ defmodule CorrelationLength do
     {region1, region2}
   end
 
-  # BFS to find vertices at specific distance (replaces expensive all-pairs shortest path).
   defp find_vertices_at_distance_bfs(source_region, adjacency_map, target_distance, all_vertices) do
     # Initialize BFS from all vertices in source region
     initial_queue = Enum.map(source_region, fn v -> {v, 0} end)
