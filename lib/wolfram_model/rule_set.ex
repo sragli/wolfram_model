@@ -1,4 +1,4 @@
-defmodule RuleSet do
+defmodule WolframModel.RuleSet do
   @moduledoc """
   Rule sets responsible for the evolution of the Wolfram Model.
   """

@@ -1,4 +1,4 @@
-defmodule CorrelationLength do
+defmodule WolframModel.CorrelationLength do
   @moduledoc """
   Correlation Length calculator for Wolfram Model using Mutual Information.
 

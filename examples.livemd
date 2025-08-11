@@ -149,7 +149,7 @@ depth = 4
 # Store current model for visualizations
 current_model = :ets.new(:wolfram_model, [:set, :public])
 
-initial = WolframModel.complex_universe()
+initial = WolframModel.Example.complex_universe()
 
 evolved = WolframModel.evolve_steps(initial, steps)
 
@@ -580,7 +580,7 @@ custom_evolution =
   |> Kino.Control.stream()
   |> Kino.animate(fn %{data: data} ->
     # Build custom rule set
-    all_rules = WolframModel.basic_rules()
+    all_rules = WolframModel.RuleSet.basic_rules()
     selected_rules = []
     
     selected_rules = if data.binary_split, do: [Enum.at(all_rules, 0) | selected_rules], else: selected_rules

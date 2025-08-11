@@ -2,8 +2,8 @@ defmodule WolframModel do
   @moduledoc """
   A simplified implementation of the Wolfram Model using hypergraphs.
   """
-  import RuleSet
   alias Hypergraph
+  alias WolframModel.CorrelationLength
 
   defstruct hypergraph: %Hypergraph{},
             generation: 0,
@@ -395,34 +395,6 @@ defmodule WolframModel do
       previous = Enum.at(history, 1) |> Hypergraph.vertex_count()
       if previous == 0, do: 0.0, else: (recent - previous) / previous
     end
-  end
-
-  @doc """
-  Creates a simple initial universe for experimentation.
-  """
-  @spec simple_universe() :: t()
-  def simple_universe do
-    initial_hg =
-      Hypergraph.new()
-      |> Hypergraph.add_hyperedge([1, 2])
-      |> Hypergraph.add_hyperedge([2, 3])
-
-    new(initial_hg, basic_rules())
-  end
-
-  @doc """
-  Creates a more complex initial universe.
-  """
-  @spec complex_universe() :: t()
-  def complex_universe do
-    initial_hg =
-      Hypergraph.new()
-      |> Hypergraph.add_hyperedge([1, 2, 3])
-      |> Hypergraph.add_hyperedge([3, 4])
-      |> Hypergraph.add_hyperedge([4, 5])
-      |> Hypergraph.add_hyperedge([1, 5])
-
-    new(initial_hg, basic_rules())
   end
 
   @doc """
