@@ -140,24 +140,17 @@ defmodule WolframViz do
 end
 ```
 
-## Interactive Universe Creator
+## Universe Creator
 
 ```elixir
 steps = 3
-depth = 4
-
-# Store current model for visualizations
-current_model = :ets.new(:wolfram_model, [:set, :public])
+depth = 5
 
 initial = WolframModel.Example.complex_universe()
 
 evolved = WolframModel.evolve_steps(initial, steps)
 
 multiway_tree = WolframModel.multiway_explore(initial, depth)
-
-# Store for visualizations
-:ets.insert(current_model, {:evolved, evolved})
-:ets.insert(current_model, {:multiway, multiway_tree})
 
 final_stats = Hypergraph.stats(evolved.hypergraph)
 ```
@@ -167,35 +160,24 @@ final_stats = Hypergraph.stats(evolved.hypergraph)
 This shows how evolution events are causally connected through time:
 
 ```elixir
-causal_viz = fn ->
-  case :ets.lookup(current_model, :evolved) do
-    [{:evolved, model}] ->
-      data = WolframModel.causal_network_data(model)
-      
-      # Create the causal network chart
-      VegaLite.new(width: 700, height: 400, title: "Causal Network of Evolution Events")
-      |> VegaLite.data_from_values(data.nodes)
-      |> VegaLite.mark(:circle, stroke: "black", strokeWidth: 2)
-      |> VegaLite.encode_field(:x, "x", type: :quantitative, 
-          scale: [domain: [0, 800]], axis: [title: "Time Order"])
-      |> VegaLite.encode_field(:y, "y", type: :quantitative, 
-          scale: [domain: [0, 400]], axis: [title: "Generation"])
-      |> VegaLite.encode_field(:color, "rule_name", type: :nominal, 
-          scale: [scheme: "category10"], legend: [title: "Rule Type"])
-      |> VegaLite.encode_field(:size, "size", type: :quantitative, 
-          scale: [range: [100, 400]])
-      |> VegaLite.encode(:tooltip, [
-        [field: "label", type: :nominal, title: "Rule"],
-        [field: "generation", type: :quantitative, title: "Generation"],
-        [field: "rule_name", type: :nominal, title: "Rule Name"]
-      ])
-      
-    [] ->
-      Kino.Markdown.new("**Please create a universe first**")
-  end
-end
+data = WolframModel.causal_network_data(evolved)
 
-causal_viz.()
+VegaLite.new(width: 700, height: 400, title: "Causal Network of Evolution Events")
+|> VegaLite.data_from_values(data.nodes)
+|> VegaLite.mark(:circle, stroke: "black", strokeWidth: 2)
+|> VegaLite.encode_field(:x, "x", type: :quantitative, 
+    scale: [domain: [0, 800]], axis: [title: "Time Order"])
+|> VegaLite.encode_field(:y, "y", type: :quantitative, 
+    scale: [domain: [0, 400]], axis: [title: "Generation"])
+|> VegaLite.encode_field(:color, "rule_name", type: :nominal, 
+    scale: [scheme: "category10"], legend: [title: "Rule Type"])
+|> VegaLite.encode_field(:size, "size", type: :quantitative, 
+    scale: [range: [100, 400]])
+|> VegaLite.encode(:tooltip, [
+  [field: "label", type: :nominal, title: "Rule"],
+  [field: "generation", type: :quantitative, title: "Generation"],
+  [field: "rule_name", type: :nominal, title: "Rule Name"]
+])
 ```
 
 ## Multiway Evolution Tree
@@ -203,36 +185,25 @@ causal_viz.()
 This shows all possible evolution paths branching out from the initial state:
 
 ```elixir
-multiway_viz = fn ->
-  case :ets.lookup(current_model, :multiway) do
-    [{:multiway, tree}] ->
-      {nodes, _edges} = WolframViz.multiway_tree_data(tree)
+{nodes, _edges} = WolframViz.multiway_tree_data(multiway_tree)
       
-      # Create multiway evolution chart
-      VegaLite.new(width: 1000, height: 600, title: "Multiway Evolution Tree")
-      |> VegaLite.data_from_values(nodes)
-      |> VegaLite.mark(:circle, stroke: "darkblue", strokeWidth: 2)
-      |> VegaLite.encode_field(:x, "x", type: :quantitative, 
-          scale: [domain: [0, 1000]], axis: [title: "Branching Position"])
-      |> VegaLite.encode_field(:y, "y", type: :quantitative, 
-          scale: [domain: [0, 600]], axis: [title: "Evolution Depth"])
-      |> VegaLite.encode_field(:color, "type", type: :nominal, 
-          scale: [domain: ["root", "state"], range: ["gold", "lightblue"]])
-      |> VegaLite.encode_field(:size, "size", type: :quantitative, 
-          scale: [range: [80, 300]])
-      |> VegaLite.encode(:tooltip, [
-        [field: "label", type: :nominal, title: "State"],
-        [field: "vertices", type: :quantitative, title: "Vertices"],
-        [field: "hyperedges", type: :quantitative, title: "Hyperedges"],
-        [field: "generation", type: :quantitative, title: "Generation"]
-      ])
-      
-    [] ->
-      Kino.Markdown.new("**Please create a universe first**")
-  end
-end
-
-multiway_viz.()
+VegaLite.new(width: 600, height: 600, title: "Multiway Evolution Tree")
+|> VegaLite.data_from_values(nodes)
+|> VegaLite.mark(:circle, stroke: "darkblue", strokeWidth: 2)
+|> VegaLite.encode_field(:x, "x", type: :quantitative, 
+    scale: [domain: [0, 1000]], axis: [title: "Branching Position"])
+|> VegaLite.encode_field(:y, "y", type: :quantitative, 
+    scale: [domain: [0, 600]], axis: [title: "Evolution Depth"])
+|> VegaLite.encode_field(:color, "type", type: :nominal, 
+    scale: [domain: ["root", "state"], range: ["gold", "lightblue"]])
+|> VegaLite.encode_field(:size, "size", type: :quantitative, 
+    scale: [range: [80, 300]])
+|> VegaLite.encode(:tooltip, [
+  [field: "label", type: :nominal, title: "State"],
+  [field: "vertices", type: :quantitative, title: "Vertices"],
+  [field: "hyperedges", type: :quantitative, title: "Hyperedges"],
+  [field: "generation", type: :quantitative, title: "Generation"]
+])
 ```
 
 ## Current Hypergraph State
@@ -240,34 +211,24 @@ multiway_viz.()
 This shows the current structure of the evolved hypergraph:
 
 ```elixir
-state_viz = fn ->
-  case :ets.lookup(current_model, :evolved) do
-    [{:evolved, model}] ->
-      data = WolframViz.hypergraph_state_data(model)
-      
-      VegaLite.new(width: 700, height: 500, title: "Current Hypergraph State")
-      |> VegaLite.data_from_values(data.nodes)
-      |> VegaLite.mark(:circle, stroke: "black", strokeWidth: 1)
-      |> VegaLite.encode_field(:x, "x", type: :quantitative, scale: [domain: [0, 700]])
-      |> VegaLite.encode_field(:y, "y", type: :quantitative, scale: [domain: [0, 500]])
-      |> VegaLite.encode_field(:color, "type", type: :nominal, 
-          scale: [domain: ["vertex", "hyperedge"], range: ["lightgreen", "lightcoral"]])
-      |> VegaLite.encode_field(:shape, "type", type: :nominal,
-          scale: [domain: ["vertex", "hyperedge"], range: ["circle", "square"]])
-      |> VegaLite.encode_field(:size, "size", type: :quantitative, 
-          scale: [range: [60, 200]])
-      |> VegaLite.encode(:tooltip, [
-        [field: "label", type: :nominal, title: "Node"],
-        [field: "type", type: :nominal, title: "Type"],
-        [field: "members", type: :nominal, title: "Members"]
-      ])
-      
-    [] ->
-      Kino.Markdown.new("**Please create a universe first using the form above.**")
-  end
-end
+data = WolframViz.hypergraph_state_data(evolved)
 
-state_viz.()
+VegaLite.new(width: 700, height: 500, title: "Current Hypergraph State")
+|> VegaLite.data_from_values(data.nodes)
+|> VegaLite.mark(:circle, stroke: "black", strokeWidth: 1)
+|> VegaLite.encode_field(:x, "x", type: :quantitative, scale: [domain: [0, 700]])
+|> VegaLite.encode_field(:y, "y", type: :quantitative, scale: [domain: [0, 500]])
+|> VegaLite.encode_field(:color, "type", type: :nominal, 
+    scale: [domain: ["vertex", "hyperedge"], range: ["lightgreen", "lightcoral"]])
+|> VegaLite.encode_field(:shape, "type", type: :nominal,
+    scale: [domain: ["vertex", "hyperedge"], range: ["circle", "square"]])
+|> VegaLite.encode_field(:size, "size", type: :quantitative, 
+    scale: [range: [60, 200]])
+|> VegaLite.encode(:tooltip, [
+  [field: "label", type: :nominal, title: "Node"],
+  [field: "type", type: :nominal, title: "Type"],
+  [field: "members", type: :nominal, title: "Members"]
+])
 ```
 
 ## Evolution Timeline
@@ -275,31 +236,21 @@ state_viz.()
 This tracks how the universe grows and changes over time:
 
 ```elixir
-timeline_viz = fn ->
-  case :ets.lookup(current_model, :evolved) do
-    [{:evolved, model}] ->
-      data = WolframViz.evolution_timeline_data(model)
-      
-      VegaLite.new(width: 600, height: 300, title: "Universe Evolution Timeline")
-      |> VegaLite.data_from_values(data)
-      |> VegaLite.mark(:line, point: true, strokeWidth: 3)
-      |> VegaLite.encode_field(:x, "generation", type: :quantitative, 
-          axis: [title: "Generation"])
-      |> VegaLite.encode_field(:y, "vertices", type: :quantitative, 
-          axis: [title: "Count"], scale: [zero: true])
-      |> VegaLite.encode(:tooltip, [
-        [field: "generation", type: :quantitative],
-        [field: "vertices", type: :quantitative],
-        [field: "hyperedges", type: :quantitative],
-        [field: "complexity", type: :quantitative]
-      ])
-      
-    [] ->
-      Kino.Markdown.new("**Please create a universe first using the form above.**")
-  end
-end
+data = WolframViz.evolution_timeline_data(evolved)
 
-timeline_viz.()
+VegaLite.new(width: 600, height: 300, title: "Universe Evolution Timeline")
+|> VegaLite.data_from_values(data)
+|> VegaLite.mark(:line, point: true, strokeWidth: 3)
+|> VegaLite.encode_field(:x, "generation", type: :quantitative, 
+    axis: [title: "Generation"])
+|> VegaLite.encode_field(:y, "vertices", type: :quantitative, 
+    axis: [title: "Count"], scale: [zero: true])
+|> VegaLite.encode(:tooltip, [
+  [field: "generation", type: :quantitative],
+  [field: "vertices", type: :quantitative],
+  [field: "hyperedges", type: :quantitative],
+  [field: "complexity", type: :quantitative]
+])
 ```
 
 ## Complexity Growth Chart
@@ -307,43 +258,33 @@ timeline_viz.()
 Compare how different measures of complexity evolve:
 
 ```elixir
-complexity_viz = fn ->
-  case :ets.lookup(current_model, :evolved) do
-    [{:evolved, model}] ->
-      data = WolframViz.evolution_timeline_data(model)
-      
-      # Transform data for multiple series
-      series_data = 
-        data
-        |> Enum.flat_map(fn point ->
-          [
-            %{generation: point.generation, value: point.vertices, measure: "Vertices"},
-            %{generation: point.generation, value: point.hyperedges, measure: "Hyperedges"},
-            %{generation: point.generation, value: point.complexity / 10, measure: "Complexity/10"}
-          ]
-        end)
-      
-      VegaLite.new(width: 600, height: 350, title: "Complexity Measures Over Time")
-      |> VegaLite.data_from_values(series_data)
-      |> VegaLite.mark(:line, point: true, strokeWidth: 2)
-      |> VegaLite.encode_field(:x, "generation", type: :quantitative, 
-          axis: [title: "Generation"])
-      |> VegaLite.encode_field(:y, "value", type: :quantitative, 
-          axis: [title: "Count"])
-      |> VegaLite.encode_field(:color, "measure", type: :nominal, 
-          scale: [scheme: "category10"], legend: [title: "Measure"])
-      |> VegaLite.encode(:tooltip, [
-        [field: "measure", type: :nominal],
-        [field: "generation", type: :quantitative],
-        [field: "value", type: :quantitative]
-      ])
-      
-    [] ->
-      Kino.Markdown.new("**Please create a universe first using the form above.**")
-  end
-end
+data = WolframViz.evolution_timeline_data(evolved)
 
-complexity_viz.()
+# Transform data for multiple series
+series_data = 
+  data
+  |> Enum.flat_map(fn point ->
+    [
+      %{generation: point.generation, value: point.vertices, measure: "Vertices"},
+      %{generation: point.generation, value: point.hyperedges, measure: "Hyperedges"},
+      %{generation: point.generation, value: point.complexity / 10, measure: "Complexity/10"}
+    ]
+  end)
+
+VegaLite.new(width: 600, height: 350, title: "Complexity Measures Over Time")
+|> VegaLite.data_from_values(series_data)
+|> VegaLite.mark(:line, point: true, strokeWidth: 2)
+|> VegaLite.encode_field(:x, "generation", type: :quantitative, 
+    axis: [title: "Generation"])
+|> VegaLite.encode_field(:y, "value", type: :quantitative, 
+    axis: [title: "Count"])
+|> VegaLite.encode_field(:color, "measure", type: :nominal, 
+    scale: [scheme: "category10"], legend: [title: "Measure"])
+|> VegaLite.encode(:tooltip, [
+  [field: "measure", type: :nominal],
+  [field: "generation", type: :quantitative],
+  [field: "value", type: :quantitative]
+])
 ```
 
 ## 3D Multiway Evolution Visualization
@@ -351,161 +292,151 @@ complexity_viz.()
 For a more immersive view of the branching evolution paths:
 
 ```elixir
-multiway_3d_viz = fn ->
-  case :ets.lookup(current_model, :multiway) do
-    [{:multiway, tree}] ->
-      {nodes, edges} = WolframViz.multiway_tree_data(tree)
-      
-      # Generate 3D JavaScript visualization
-      Kino.HTML.new("""
-      <div id="multiway-3d" style="width: 800px; height: 600px; border: 2px solid #333; margin: 20px 0;"></div>
-      <div style="margin: 10px 0;">
-        <strong>3D Multiway Evolution:</strong> Mouse to rotate • Scroll to zoom • Gold = Initial state • Blue = Evolution branches
-      </div>
-      
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-      <script>
-        const container = document.getElementById('multiway-3d');
-        if (container && !container.hasChildNodes()) {
-          const scene = new THREE.Scene();
-          scene.background = new THREE.Color(0x0a0a0a);
-          
-          const camera = new THREE.PerspectiveCamera(75, 800/600, 0.1, 2000);
-          camera.position.set(400, 300, 500);
-          
-          const renderer = new THREE.WebGLRenderer({ antialias: true });
-          renderer.setSize(800, 600);
-          container.appendChild(renderer.domElement);
-          
-          // Lighting
-          const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
-          scene.add(ambientLight);
-          const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-          directionalLight.position.set(100, 100, 50);
-          scene.add(directionalLight);
-          
-          // Add nodes
-          const nodeData = #{Jason.encode!(nodes)};
-          const edgeData = #{Jason.encode!(edges)};
-          
-          const nodeObjects = {};
-          
-          nodeData.forEach(node => {
-            const geometry = new THREE.SphereGeometry(node.size / 20, 16, 16);
-            const material = new THREE.MeshLambertMaterial({
-              color: node.type === 'root' ? 0xffd700 : 0x4169e1,
-              transparent: true,
-              opacity: 0.8
-            });
-            const sphere = new THREE.Mesh(geometry, material);
-            
-            // Position in 3D space
-            sphere.position.set(
-              (node.x - 400) * 2, 
-              node.y * 3, 
-              (node.level * 100) - 200
-            );
-            
-            scene.add(sphere);
-            nodeObjects[node.id] = sphere;
-            
-            // Add label
-            const canvas = document.createElement('canvas');
-            const context = canvas.getContext('2d');
-            canvas.width = 128;
-            canvas.height = 32;
-            context.fillStyle = 'white';
-            context.font = 'Bold 14px Arial';
-            context.fillText(node.label, 4, 20);
-            
-            const texture = new THREE.CanvasTexture(canvas);
-            const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
-            const sprite = new THREE.Sprite(spriteMaterial);
-            sprite.position.copy(sphere.position);
-            sprite.position.y += 30;
-            sprite.scale.set(50, 12, 1);
-            scene.add(sprite);
-          });
-          
-          // Add edges
-          edgeData.forEach(edge => {
-            const sourcePos = nodeObjects[edge.source].position;
-            const targetPos = nodeObjects[edge.target].position;
-            
-            const geometry = new THREE.BufferGeometry().setFromPoints([
-              sourcePos, targetPos
-            ]);
-            const material = new THREE.LineBasicMaterial({
-              color: 0x00ff88,
-              transparent: true,
-              opacity: 0.6
-            });
-            const line = new THREE.Line(geometry, material);
-            scene.add(line);
-          });
-          
-          // Mouse controls
-          let isMouseDown = false;
-          let mouseX = 0, mouseY = 0;
-          let targetRotationX = 0, targetRotationY = 0;
-          
-          container.addEventListener('mousedown', (e) => {
-            isMouseDown = true;
-            mouseX = e.clientX;
-            mouseY = e.clientY;
-          });
-          
-          container.addEventListener('mouseup', () => {
-            isMouseDown = false;
-          });
-          
-          container.addEventListener('mousemove', (e) => {
-            if (!isMouseDown) return;
-            
-            const deltaX = e.clientX - mouseX;
-            const deltaY = e.clientY - mouseY;
-            
-            targetRotationY += deltaX * 0.01;
-            targetRotationX += deltaY * 0.01;
-            
-            mouseX = e.clientX;
-            mouseY = e.clientY;
-          });
-          
-          let zoom = 500;
-          container.addEventListener('wheel', (e) => {
-            zoom += e.deltaY * 0.5;
-            zoom = Math.max(100, Math.min(1000, zoom));
-            e.preventDefault();
-          });
-          
-          // Animation loop
-          function animate() {
-            requestAnimationFrame(animate);
-            
-            // Update camera position
-            camera.position.x = zoom * Math.sin(targetRotationY) * Math.cos(targetRotationX);
-            camera.position.y = zoom * Math.sin(targetRotationX);
-            camera.position.z = zoom * Math.cos(targetRotationY) * Math.cos(targetRotationX);
-            camera.lookAt(0, 0, 0);
-            
-            // Gentle rotation
-            scene.rotation.y += 0.002;
-            
-            renderer.render(scene, camera);
-          }
-          
-          animate();
-        }
-      </script>
-      """)
-      
-    [] ->
-      Kino.Markdown.new("**Please create a universe first using the form above.**")
-  end
-end
+{nodes, edges} = WolframViz.multiway_tree_data(multiway_tree)
 
-multiway_3d_viz.()
+# Generate 3D JavaScript visualization
+Kino.HTML.new("""
+<div id="multiway-3d" style="width: 800px; height: 600px; border: 2px solid #333; margin: 20px 0;"></div>
+<div style="margin: 10px 0;">
+  <strong>3D Multiway Evolution:</strong> Mouse to rotate • Scroll to zoom • Gold = Initial state • Blue = Evolution branches
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+  const container = document.getElementById('multiway-3d');
+  if (container && !container.hasChildNodes()) {
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0a0a);
+    
+    const camera = new THREE.PerspectiveCamera(75, 800/600, 0.1, 2000);
+    camera.position.set(400, 300, 500);
+    
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(800, 600);
+    container.appendChild(renderer.domElement);
+    
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
+    scene.add(ambientLight);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(100, 100, 50);
+    scene.add(directionalLight);
+    
+    // Add nodes
+    const nodeData = #{Jason.encode!(nodes)};
+    const edgeData = #{Jason.encode!(edges)};
+    
+    const nodeObjects = {};
+    
+    nodeData.forEach(node => {
+      const geometry = new THREE.SphereGeometry(node.size / 20, 16, 16);
+      const material = new THREE.MeshLambertMaterial({
+        color: node.type === 'root' ? 0xffd700 : 0x4169e1,
+        transparent: true,
+        opacity: 0.8
+      });
+      const sphere = new THREE.Mesh(geometry, material);
+      
+      // Position in 3D space
+      sphere.position.set(
+        (node.x - 400) * 2, 
+        node.y * 3, 
+        (node.level * 100) - 200
+      );
+      
+      scene.add(sphere);
+      nodeObjects[node.id] = sphere;
+      
+      // Add label
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      canvas.width = 128;
+      canvas.height = 32;
+      context.fillStyle = 'white';
+      context.font = 'Bold 14px Arial';
+      context.fillText(node.label, 4, 20);
+      
+      const texture = new THREE.CanvasTexture(canvas);
+      const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+      const sprite = new THREE.Sprite(spriteMaterial);
+      sprite.position.copy(sphere.position);
+      sprite.position.y += 30;
+      sprite.scale.set(50, 12, 1);
+      scene.add(sprite);
+    });
+    
+    // Add edges
+    edgeData.forEach(edge => {
+      const sourcePos = nodeObjects[edge.source].position;
+      const targetPos = nodeObjects[edge.target].position;
+      
+      const geometry = new THREE.BufferGeometry().setFromPoints([
+        sourcePos, targetPos
+      ]);
+      const material = new THREE.LineBasicMaterial({
+        color: 0x00ff88,
+        transparent: true,
+        opacity: 0.6
+      });
+      const line = new THREE.Line(geometry, material);
+      scene.add(line);
+    });
+    
+    // Mouse controls
+    let isMouseDown = false;
+    let mouseX = 0, mouseY = 0;
+    let targetRotationX = 0, targetRotationY = 0;
+    
+    container.addEventListener('mousedown', (e) => {
+      isMouseDown = true;
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+    });
+    
+    container.addEventListener('mouseup', () => {
+      isMouseDown = false;
+    });
+    
+    container.addEventListener('mousemove', (e) => {
+      if (!isMouseDown) return;
+      
+      const deltaX = e.clientX - mouseX;
+      const deltaY = e.clientY - mouseY;
+      
+      targetRotationY += deltaX * 0.01;
+      targetRotationX += deltaY * 0.01;
+      
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+    });
+    
+    let zoom = 500;
+    container.addEventListener('wheel', (e) => {
+      zoom += e.deltaY * 0.5;
+      zoom = Math.max(100, Math.min(1000, zoom));
+      e.preventDefault();
+    });
+    
+    // Animation loop
+    function animate() {
+      requestAnimationFrame(animate);
+      
+      // Update camera position
+      camera.position.x = zoom * Math.sin(targetRotationY) * Math.cos(targetRotationX);
+      camera.position.y = zoom * Math.sin(targetRotationX);
+      camera.position.z = zoom * Math.cos(targetRotationY) * Math.cos(targetRotationX);
+      camera.lookAt(0, 0, 0);
+      
+      // Gentle rotation
+      scene.rotation.y += 0.002;
+      
+      renderer.render(scene, camera);
+    }
+    
+    animate();
+  }
+</script>
+""")
 ```
 
 ## Rule Application Statistics
@@ -513,43 +444,32 @@ multiway_3d_viz.()
 Analyze which rules are most frequently applied:
 
 ```elixir
-rule_stats_viz = fn ->
-  case :ets.lookup(current_model, :evolved) do
-    [{:evolved, model}] ->
-      # Count rule applications
-      rule_counts = 
-        model.causal_network
-        |> Enum.group_by(& &1.rule.name)
-        |> Enum.map(fn {rule_name, events} ->
-          %{
-            rule: rule_name,
-            count: length(events),
-            percentage: length(events) / max(length(model.causal_network), 1) * 100
-          }
-        end)
-        |> Enum.sort_by(& &1.count, :desc)
-      
-      VegaLite.new(width: 500, height: 300, title: "Rule Application Frequency")
-      |> VegaLite.data_from_values(rule_counts)
-      |> VegaLite.mark(:bar)
-      |> VegaLite.encode_field(:x, "rule", type: :nominal, 
-          axis: [title: "Rule Name", labelAngle: -45])
-      |> VegaLite.encode_field(:y, "count", type: :quantitative, 
-          axis: [title: "Applications"])
-      |> VegaLite.encode_field(:color, "rule", type: :nominal, 
-          scale: [scheme: "set2"])
-      |> VegaLite.encode(:tooltip, [
-        [field: "rule", type: :nominal, title: "Rule"],
-        [field: "count", type: :quantitative, title: "Count"],
-        [field: "percentage", type: :quantitative, title: "Percentage", format: ".1f"]
-      ])
-      
-    [] ->
-      Kino.Markdown.new("**Please create a universe first using the form above.**")
-  end
-end
+rule_counts = 
+  evolved.causal_network
+  |> Enum.group_by(& &1.rule.name)
+  |> Enum.map(fn {rule_name, events} ->
+    %{
+      rule: rule_name,
+      count: length(events),
+      percentage: length(events) / max(length(evolved.causal_network), 1) * 100
+    }
+  end)
+  |> Enum.sort_by(& &1.count, :desc)
 
-rule_stats_viz.()
+VegaLite.new(width: 500, height: 300, title: "Rule Application Frequency")
+|> VegaLite.data_from_values(rule_counts)
+|> VegaLite.mark(:bar)
+|> VegaLite.encode_field(:x, "rule", type: :nominal, 
+    axis: [title: "Rule Name", labelAngle: -45])
+|> VegaLite.encode_field(:y, "count", type: :quantitative, 
+    axis: [title: "Applications"])
+|> VegaLite.encode_field(:color, "rule", type: :nominal, 
+    scale: [scheme: "set2"])
+|> VegaLite.encode(:tooltip, [
+  [field: "rule", type: :nominal, title: "Rule"],
+  [field: "count", type: :quantitative, title: "Count"],
+  [field: "percentage", type: :quantitative, title: "Percentage", format: ".1f"]
+])
 ```
 
 ## Interactive Rule Explorer
@@ -557,6 +477,9 @@ rule_stats_viz.()
 Try different rule combinations and see how they affect evolution:
 
 ```elixir
+# Store current model for visualizations
+current_model = :ets.new(:wolfram_model, [:set, :public])
+
 # Rule selection inputs
 binary_split = Kino.Input.checkbox("Binary Split Rule", default: true)
 triangle_completion = Kino.Input.checkbox("Triangle Completion Rule", default: true)
@@ -626,8 +549,8 @@ Look for interesting patterns that emerge from simple rules:
 
 ```elixir
 pattern_analysis = fn ->
-  case :ets.lookup(current_model, :evolved) do
-    [{:evolved, model}] ->
+  case :ets.lookup(current_model, :custom) do
+    [{:custom, model}] ->
       hg = model.hypergraph
       vertices = Hypergraph.vertices(hg)
       hyperedges = Hypergraph.hyperedges(hg)

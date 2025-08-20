@@ -353,11 +353,11 @@ defmodule WolframModel do
   defp causally_related?(event1, event2) do
     event1.generation < event2.generation and
       not Enum.empty?(
-        for e1 <- event1.matched_hyperedges,
+        (for e1 <- event1.matched_hyperedges,
             e2 <- event2.matched_hyperedges,
             do:
-              MapSet.to_list(MapSet.intersection(e1, e2))
-              |> List.flatten()
+              MapSet.to_list(MapSet.intersection(e1, e2)))
+        |> List.flatten()
       )
   end
 
