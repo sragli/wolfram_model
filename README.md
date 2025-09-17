@@ -1,10 +1,8 @@
 # WolframModel
 
-Elixir module that implements a simplified version of the Wolfram Model, including evolution
-rules, causal networks, and multiway evolution.
+Elixir module that implements a simplified version of the Wolfram Model, including evolution rules, causal networks, and multiway evolution.
 
-The Wolfram Model provides a computational framework for problems that can be modeled by a
-hypergraph that evolves according to simple local rewriting rules. This module provides:
+The Wolfram Model provides a computational framework for problems that can be modeled by a hypergraph that evolves according to simple local rewriting rules. This module provides:
 * Evolution rules that transform hypergraph patterns
 * Causal networks tracking rule applications
 * Multiway evolution exploring all possible paths
@@ -12,8 +10,7 @@ hypergraph that evolves according to simple local rewriting rules. This module p
 
 ## Installation
 
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `wolfram_model` to your list of dependencies in `mix.exs`:
+If [available in Hex](https://hex.pm/docs/publish), the package can be installed by adding `wolfram_model` to your list of dependencies in `mix.exs`:
 
 ```elixir
 def deps do
@@ -23,8 +20,7 @@ def deps do
 end
 ```
 
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
+Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc) and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
 be found at <https://hexdocs.pm/wolfram_model>.
 
 ## Key Features
@@ -50,8 +46,7 @@ be found at <https://hexdocs.pm/wolfram_model>.
 ### Emergent Analysis
 
 * Measures complexity, growth rates, clustering
-* Uses an information-theoretic approach to measure spatial coherence (Correlation Length,
-  the distance between regions where Mutual Information drops to 1/e of its maximum)
+* Uses an information-theoretic approach to measure spatial coherence (Correlation Length, the distance between regions where Mutual Information drops to 1/e of its maximum)
 * Tracks how simple rules lead to complex structures
 * Analyzes diameter and connectivity patterns
 
