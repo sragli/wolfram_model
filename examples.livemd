@@ -143,36 +143,30 @@ end
 ## Universe Creator
 
 ```elixir
-steps = 3
-depth = 5
+steps = 10
 
 initial = WolframModel.Example.complex_universe()
 
 evolved = WolframModel.evolve_steps(initial, steps)
-
-multiway_tree = WolframModel.multiway_explore(initial, depth)
 
 final_stats = Hypergraph.stats(evolved.hypergraph)
 ```
 
 ## Causal Network Visualization
 
+```elixir
+data = WolframModel.causal_network_data(evolved)
+```
+
 This shows how evolution events are causally connected through time:
 
 ```elixir
-data = WolframModel.causal_network_data(evolved)
-
 VegaLite.new(width: 700, height: 400, title: "Causal Network of Evolution Events")
 |> VegaLite.data_from_values(data.nodes)
 |> VegaLite.mark(:circle, stroke: "black", strokeWidth: 2)
-|> VegaLite.encode_field(:x, "x", type: :quantitative, 
-    scale: [domain: [0, 800]], axis: [title: "Time Order"])
-|> VegaLite.encode_field(:y, "y", type: :quantitative, 
-    scale: [domain: [0, 400]], axis: [title: "Generation"])
-|> VegaLite.encode_field(:color, "rule_name", type: :nominal, 
-    scale: [scheme: "category10"], legend: [title: "Rule Type"])
-|> VegaLite.encode_field(:size, "size", type: :quantitative, 
-    scale: [range: [100, 400]])
+|> VegaLite.encode_field(:x, "id", type: :quantitative, title: "Time Order")
+|> VegaLite.encode_field(:y, "generation", type: :quantitative, title: "Generation")
+|> VegaLite.encode_field(:color, "rule_name", type: :nominal, title: "Rule Type")
 |> VegaLite.encode(:tooltip, [
   [field: "label", type: :nominal, title: "Rule"],
   [field: "generation", type: :quantitative, title: "Generation"],
@@ -182,22 +176,26 @@ VegaLite.new(width: 700, height: 400, title: "Causal Network of Evolution Events
 
 ## Multiway Evolution Tree
 
+```elixir
+depth = 5
+
+multiway_tree = WolframModel.multiway_explore(initial, depth)
+{nodes, _edges} = WolframViz.multiway_tree_data(multiway_tree)
+```
+
 This shows all possible evolution paths branching out from the initial state:
 
 ```elixir
-{nodes, _edges} = WolframViz.multiway_tree_data(multiway_tree)
-      
 VegaLite.new(width: 600, height: 600, title: "Multiway Evolution Tree")
 |> VegaLite.data_from_values(nodes)
 |> VegaLite.mark(:circle, stroke: "darkblue", strokeWidth: 2)
 |> VegaLite.encode_field(:x, "x", type: :quantitative, 
-    scale: [domain: [0, 1000]], axis: [title: "Branching Position"])
+    title: "Branching Position")
 |> VegaLite.encode_field(:y, "y", type: :quantitative, 
-    scale: [domain: [0, 600]], axis: [title: "Evolution Depth"])
+    title: "Evolution Depth")
 |> VegaLite.encode_field(:color, "type", type: :nominal, 
     scale: [domain: ["root", "state"], range: ["gold", "lightblue"]])
-|> VegaLite.encode_field(:size, "size", type: :quantitative, 
-    scale: [range: [80, 300]])
+|> VegaLite.encode_field(:size, "size", type: :quantitative)
 |> VegaLite.encode(:tooltip, [
   [field: "label", type: :nominal, title: "State"],
   [field: "vertices", type: :quantitative, title: "Vertices"],
