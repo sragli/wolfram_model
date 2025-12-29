@@ -157,8 +157,8 @@ defmodule WolframModel do
     adjacency_map = build_adjacency_map(hg)
 
     Map.merge(stats, %{
-      clustering_coefficient: calculate_clustering_coefficient(hg, adjacency_map),
-      estimated_diameter: estimate_diameter(hg, adjacency_map),
+      clustering_coefficient: calculate_clustering_coefficient(adjacency_map),
+      estimated_diameter: estimate_diameter(adjacency_map),
       growth_rate: calculate_growth_rate(model),
       complexity_measure: calculate_complexity(hg),
       evolution_generation: model.generation
@@ -307,7 +307,7 @@ defmodule WolframModel do
       )
   end
 
-  defp calculate_clustering_coefficient(_hg, adjacency_map) do
+  defp calculate_clustering_coefficient(adjacency_map) do
     vertices = Map.keys(adjacency_map)
 
     if length(vertices) < 3 do
@@ -369,7 +369,7 @@ defmodule WolframModel do
     end)
   end
 
-  defp estimate_diameter(_hg, adjacency_map) do
+  defp estimate_diameter(adjacency_map) do
     # Compute graph diameter (longest shortest path) using BFS over adjacency_map.
     # For disconnected graphs, compute diameter of each connected component and
     # return the maximum; for an isolated vertex we return 1 (consistent with prior behavior).
