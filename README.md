@@ -53,7 +53,7 @@ end
 
 ```elixir
 # Create a simple universe
-universe = WolframModel.simple_universe()
+universe = WolframModel.Example.simple_universe()
 
 # Evolve it for 10 steps
 evolved = WolframModel.evolve_steps(universe, 10)
