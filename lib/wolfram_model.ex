@@ -3,13 +3,20 @@ defmodule WolframModel do
   A simplified implementation of the Wolfram Model using hypergraphs.
   """
   alias Hypergraph
-  alias WolframModel.CorrelationLength
+  alias Hypergraph.CorrelationLength
 
   defstruct hypergraph: %Hypergraph{},
             generation: 0,
             causal_network: [],
             evolution_history: [],
-            rules: []
+            rules: [],
+            id_generator: &WolframModel.default_id_gen/0
+
+  @doc false
+  @spec default_id_gen() :: integer()
+  def default_id_gen do
+    System.unique_integer([:positive])
+  end
 
   @type rule :: %{
           pattern: [MapSet.t()],
@@ -29,26 +36,36 @@ defmodule WolframModel do
           generation: non_neg_integer(),
           causal_network: [evolution_event()],
           evolution_history: [Hypergraph.t()],
-          rules: [rule()]
+          rules: [rule()],
+          id_generator: (-> integer())
         }
 
   @doc """
   Creates a new Wolfram Model universe with initial hypergraph and rules.
   """
-  @spec new(Hypergraph.t(), [rule()]) :: t()
-  def new(initial_hypergraph, rules) do
+  @spec new(Hypergraph.t(), [rule()], keyword()) :: t()
+  def new(initial_hypergraph, rules, opts \\ []) do
+    id_gen = Keyword.get(opts, :id_generator, &WolframModel.default_id_gen/0)
+
     %__MODULE__{
       hypergraph: initial_hypergraph,
       rules: rules,
-      evolution_history: [initial_hypergraph]
+      evolution_history: [initial_hypergraph],
+      id_generator: id_gen
     }
   end
 
   @doc """
   Evolves the universe by one step, applying the first applicable rule.
+
+  Accepts `opts` where you can pass `:id_generator` to override the model's
+  id generator for deterministic behavior during tests or specific runs.
   """
-  @spec evolve_step(t()) :: t()
-  def evolve_step(model) do
+  @spec evolve_step(t(), keyword()) :: t()
+  def evolve_step(model, opts \\ []) do
+    id_gen = Keyword.get(opts, :id_generator)
+    model = if id_gen, do: %{model | id_generator: id_gen}, else: model
+
     case find_first_match(model) do
       nil ->
         # No rules applicable
@@ -61,15 +78,23 @@ defmodule WolframModel do
 
   @doc """
   Evolves the universe for a specified number of steps.
+  Accepts `opts` forwarded to `evolve_step/2` (e.g., `:id_generator`).
+  """
+  @spec evolve_steps(t(), non_neg_integer(), keyword()) :: t()
+  def evolve_steps(model, steps, opts \\ [])
+
+  def evolve_steps(model, 0, _opts), do: model
+
+  def evolve_steps(model, steps, opts) do
+    model
+    |> evolve_step(opts)
+    |> evolve_steps(steps - 1, opts)
+  end
+
+  @doc """
+  Evolves the universe for a specified number of steps.
   """
   @spec evolve_steps(t(), non_neg_integer()) :: t()
-  def evolve_steps(model, 0), do: model
-
-  def evolve_steps(model, steps) do
-    model
-    |> evolve_step()
-    |> evolve_steps(steps - 1)
-  end
 
   @doc """
   Finds all possible rule applications in the current state (multiway evolution).
@@ -194,15 +219,15 @@ defmodule WolframModel do
   defp find_pattern_match(hypergraph, pattern) do
     hyperedges = Hypergraph.hyperedges(hypergraph)
 
-    # Simple pattern matching - find first occurrence
+    # Delegate matching to the Matcher module
     case pattern do
       [single_pattern] ->
         # Single hyperedge pattern
-        match_single_hyperedge(hyperedges, single_pattern)
+        WolframModel.Matcher.match_single(hyperedges, single_pattern)
 
       [p1, p2] ->
         # Two hyperedge pattern
-        match_two_hyperedges(hyperedges, p1, p2)
+        WolframModel.Matcher.match_two(hyperedges, p1, p2)
 
       _ ->
         # TODO Handle more complex patterns
@@ -215,79 +240,13 @@ defmodule WolframModel do
 
     case pattern do
       [single_pattern] ->
-        match_all_single_hyperedges(hyperedges, single_pattern)
+        WolframModel.Matcher.match_all_single(hyperedges, single_pattern)
 
       [p1, p2] ->
-        match_all_two_hyperedges(hyperedges, p1, p2)
+        WolframModel.Matcher.match_all_two(hyperedges, p1, p2)
 
       _ ->
         []
-    end
-  end
-
-  defp match_single_hyperedge(hyperedges, pattern) do
-    pattern_size = MapSet.size(pattern)
-
-    hyperedges
-    |> Enum.find(fn he -> MapSet.size(he) == pattern_size end)
-    |> case do
-      nil ->
-        nil
-
-      matched_he ->
-        # Create mapping from pattern to actual vertices
-        pattern_list = MapSet.to_list(pattern)
-        matched_list = MapSet.to_list(matched_he)
-        mapping = Enum.zip(pattern_list, matched_list) |> Map.new()
-        %{mapping: mapping, matched_hyperedges: [matched_he]}
-    end
-  end
-
-  defp match_all_single_hyperedges(hyperedges, pattern) do
-    pattern_size = MapSet.size(pattern)
-
-    hyperedges
-    |> Enum.filter(fn he -> MapSet.size(he) == pattern_size end)
-    |> Enum.map(fn matched_he ->
-      pattern_list = MapSet.to_list(pattern)
-      matched_list = MapSet.to_list(matched_he)
-      mapping = Enum.zip(pattern_list, matched_list) |> Map.new()
-      %{mapping: mapping, matched_hyperedges: [matched_he]}
-    end)
-  end
-
-  defp match_two_hyperedges(hyperedges, p1, p2) do
-    p1_size = MapSet.size(p1)
-    p2_size = MapSet.size(p2)
-
-    # Find pairs of hyperedges with right sizes that share vertices
-    for he1 <- hyperedges,
-        he2 <- hyperedges,
-        he1 != he2,
-        MapSet.size(he1) == p1_size,
-        MapSet.size(he2) == p2_size,
-        !MapSet.disjoint?(he1, he2) do
-      # Try to create consistent mapping
-      shared = MapSet.intersection(he1, he2)
-
-      if MapSet.size(shared) > 0 do
-        %{mapping: %{}, matched_hyperedges: [he1, he2]}
-      end
-    end
-    |> List.first()
-  end
-
-  defp match_all_two_hyperedges(hyperedges, p1, p2) do
-    p1_size = MapSet.size(p1)
-    p2_size = MapSet.size(p2)
-
-    for he1 <- hyperedges,
-        he2 <- hyperedges,
-        he1 != he2,
-        MapSet.size(he1) == p1_size,
-        MapSet.size(he2) == p2_size,
-        !MapSet.disjoint?(he1, he2) do
-      %{mapping: %{}, matched_hyperedges: [he1, he2]}
     end
   end
 
@@ -304,7 +263,12 @@ defmodule WolframModel do
       rule.replacement
       |> Enum.reduce(new_hg, fn replacement_he, hg ->
         actual_vertices =
-          substitute_vertices(replacement_he, match_data.mapping, model.generation)
+          substitute_vertices(
+            replacement_he,
+            match_data.mapping,
+            model.generation,
+            model.id_generator
+          )
 
         Hypergraph.add_hyperedge(hg, MapSet.to_list(actual_vertices))
       end)
@@ -327,17 +291,22 @@ defmodule WolframModel do
     }
   end
 
-  defp substitute_vertices(replacement_he, mapping, generation) do
+  defp substitute_vertices(
+         replacement_he,
+         mapping,
+         generation,
+         id_generator
+       ) do
     replacement_he
     |> MapSet.to_list()
     |> Enum.map(fn vertex ->
       case vertex do
-        :new -> :"new_#{generation}_#{:rand.uniform(1_000_000)}"
-        :center -> :"center_#{generation}_#{:rand.uniform(1_000_000)}"
-        :parallel -> :"parallel_#{generation}_#{:rand.uniform(1_000_000)}"
-        :new1 -> :"new1_#{generation}_#{:rand.uniform(1_000_000)}"
-        :new2 -> :"new2_#{generation}_#{:rand.uniform(1_000_000)}"
-        :new3 -> :"new3_#{generation}_#{:rand.uniform(1_000_000)}"
+        :new -> {:new, generation, id_generator.()}
+        :center -> {:center, generation, id_generator.()}
+        :parallel -> {:parallel, generation, id_generator.()}
+        :new1 -> {:new1, generation, id_generator.()}
+        :new2 -> {:new2, generation, id_generator.()}
+        :new3 -> {:new3, generation, id_generator.()}
         # For spacetime coordinates
         {tag, offset} -> {tag, offset}
         _ -> Map.get(mapping, vertex, vertex)
@@ -353,10 +322,11 @@ defmodule WolframModel do
   defp causally_related?(event1, event2) do
     event1.generation < event2.generation and
       not Enum.empty?(
-        (for e1 <- event1.matched_hyperedges,
-            e2 <- event2.matched_hyperedges,
-            do:
-              MapSet.to_list(MapSet.intersection(e1, e2)))
+        for(
+          e1 <- event1.matched_hyperedges,
+          e2 <- event2.matched_hyperedges,
+          do: MapSet.to_list(MapSet.intersection(e1, e2))
+        )
         |> List.flatten()
       )
   end
@@ -365,7 +335,7 @@ defmodule WolframModel do
     # Simplified clustering coefficient for hypergraphs
     vertices = Hypergraph.vertices(hg)
     # Placeholder
-    if length(vertices) < 3, do: 0.0, else: 0.5
+    if MapSet.size(vertices) < 3, do: 0.0, else: 0.5
   end
 
   defp calculate_complexity(hg) do

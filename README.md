@@ -1,16 +1,14 @@
 # WolframModel
 
-Elixir module that implements a simplified version of the Wolfram Model, including evolution rules, causal networks, and multiway evolution.
+The Wolfram Model is a rule-based computational framework in which a system is represented by a hypergraph that evolves through simple, local rewriting rules. Even with simple rules, the model can generate rich, emergent behavior and is used to explore complex systems.
 
-The Wolfram Model provides a computational framework for problems that can be modeled by a hypergraph that evolves according to simple local rewriting rules. This module provides:
+This repository contains a compact Elixir implementation of the Wolfram Model, providing:
 * Evolution rules that transform hypergraph patterns
 * Causal networks tracking rule applications
 * Multiway evolution exploring all possible paths
 * Emergent structure analysis
 
 ## Installation
-
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed by adding `wolfram_model` to your list of dependencies in `mix.exs`:
 
 ```elixir
 def deps do

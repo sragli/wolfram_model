@@ -1,3 +1,5 @@
 %{
-  "hypergraph": {:git, "https://github.com/sragli/hypergraph.git", "8568674b1ac704a11135da15add7c58fde0f3722", []},
+  "hypergraph": {:git, "https://github.com/sragli/hypergraph.git", "38be4da6a64c14ec8ce869174f3a4a500687dd88", []},
+  "table": {:hex, :table, "0.1.2", "87ad1125f5b70c5dea0307aa633194083eb5182ec537efc94e96af08937e14a8", [:mix], [], "hexpm", "7e99bc7efef806315c7e65640724bf165c3061cdc5d854060f74468367065029"},
+  "vega_lite": {:hex, :vega_lite, "0.1.11", "2b261d21618f6fa9f63bb4542f0262982d2e40aea3f83e935788fe172902b3c2", [:mix], [{:table, "~> 0.1.0", [hex: :table, repo: "hexpm", optional: false]}], "hexpm", "d18c3f11369c14bdf36ab53010c06bf5505c221cbcb32faac7420cf6926b3c50"},
 }
