@@ -9,6 +9,28 @@ defmodule WolframModel.Matcher do
 
   alias Hypergraph
 
+  @spec match([MapSet.t()], [MapSet.t()]) ::
+          %{mapping: map(), matched_hyperedges: [MapSet.t()]} | nil
+  def match(hyperedges, [single_pattern]) do
+    match_single(hyperedges, single_pattern)
+  end
+
+  @spec match([MapSet.t()], [MapSet.t()]) ::
+          %{mapping: map(), matched_hyperedges: [MapSet.t()]} | nil
+  def match(hyperedges, [p1, p2]) do
+    match_two(hyperedges, p1, p2)
+  end
+
+  @spec match_all([MapSet.t()], [MapSet.t()]) :: [map()]
+  def match_all(hyperedges, [single_pattern]) do
+    match_all_single(hyperedges, single_pattern)
+  end
+
+  @spec match_all([MapSet.t()], [MapSet.t()]) :: [map()]
+  def match_all(hyperedges, [p1, p2]) do
+    match_all_two(hyperedges, p1, p2)
+  end
+
   @spec match_single([MapSet.t()], MapSet.t()) ::
           %{mapping: map(), matched_hyperedges: [MapSet.t()]} | nil
   def match_single(hyperedges, pattern) do

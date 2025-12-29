@@ -92,11 +92,6 @@ defmodule WolframModel do
   end
 
   @doc """
-  Evolves the universe for a specified number of steps.
-  """
-  @spec evolve_steps(t(), non_neg_integer()) :: t()
-
-  @doc """
   Finds all possible rule applications in the current state (multiway evolution).
   Returns a list of possible next states.
   """
@@ -150,15 +145,20 @@ defmodule WolframModel do
 
   @doc """
   Extracts emergent properties from the evolved hypergraph.
+
+  Builds an adjacency map once and reuses it across analytics to avoid
+  repeated scanning of hyperedges (performance improvement).
   """
   @spec analyze_emergence(t()) :: map()
   def analyze_emergence(model) do
     hg = model.hypergraph
     stats = Hypergraph.stats(hg)
 
+    adjacency_map = build_adjacency_map(hg)
+
     Map.merge(stats, %{
-      clustering_coefficient: calculate_clustering_coefficient(hg),
-      estimated_diameter: estimate_diameter(hg),
+      clustering_coefficient: calculate_clustering_coefficient(hg, adjacency_map),
+      estimated_diameter: estimate_diameter(hg, adjacency_map),
       growth_rate: calculate_growth_rate(model),
       complexity_measure: calculate_complexity(hg),
       evolution_generation: model.generation
@@ -218,36 +218,12 @@ defmodule WolframModel do
 
   defp find_pattern_match(hypergraph, pattern) do
     hyperedges = Hypergraph.hyperedges(hypergraph)
-
-    # Delegate matching to the Matcher module
-    case pattern do
-      [single_pattern] ->
-        # Single hyperedge pattern
-        WolframModel.Matcher.match_single(hyperedges, single_pattern)
-
-      [p1, p2] ->
-        # Two hyperedge pattern
-        WolframModel.Matcher.match_two(hyperedges, p1, p2)
-
-      _ ->
-        # TODO Handle more complex patterns
-        nil
-    end
+    WolframModel.Matcher.match(hyperedges, pattern)
   end
 
   defp find_all_pattern_matches(hypergraph, pattern) do
     hyperedges = Hypergraph.hyperedges(hypergraph)
-
-    case pattern do
-      [single_pattern] ->
-        WolframModel.Matcher.match_all_single(hyperedges, single_pattern)
-
-      [p1, p2] ->
-        WolframModel.Matcher.match_all_two(hyperedges, p1, p2)
-
-      _ ->
-        []
-    end
+    WolframModel.Matcher.match_all(hyperedges, pattern)
   end
 
   defp apply_rule(model, rule, match_data) do
@@ -331,11 +307,35 @@ defmodule WolframModel do
       )
   end
 
-  defp calculate_clustering_coefficient(hg) do
-    # Simplified clustering coefficient for hypergraphs
-    vertices = Hypergraph.vertices(hg)
-    # Placeholder
-    if MapSet.size(vertices) < 3, do: 0.0, else: 0.5
+  defp calculate_clustering_coefficient(_hg, adjacency_map) do
+    vertices = Map.keys(adjacency_map)
+
+    if length(vertices) < 3 do
+      0.0
+    else
+      local_coeffs =
+        Enum.map(vertices, fn v ->
+          neighbors = Map.get(adjacency_map, v, MapSet.new()) |> MapSet.to_list()
+          n = length(neighbors)
+
+          if n < 2 do
+            0.0
+          else
+            # Count connected neighbor pairs using adjacency map
+            pairs = for i <- neighbors, j <- neighbors, i < j, do: {i, j}
+
+            existing =
+              Enum.count(pairs, fn {i, j} ->
+                MapSet.member?(Map.get(adjacency_map, i, MapSet.new()), j)
+              end)
+
+            possible = n * (n - 1) / 2
+            existing / possible
+          end
+        end)
+
+      Enum.sum(local_coeffs) / length(local_coeffs)
+    end
   end
 
   defp calculate_complexity(hg) do
@@ -349,10 +349,70 @@ defmodule WolframModel do
     end
   end
 
-  defp estimate_diameter(hg) do
-    # Simplified diameter estimation
-    vertex_count = Hypergraph.vertex_count(hg)
-    max(1, trunc(:math.log2(vertex_count)))
+  defp build_adjacency_map(hg) do
+    # Build a map of vertex -> MapSet of neighbors by iterating hyperedges once.
+    adj =
+      hg
+      |> Hypergraph.hyperedges()
+      |> Enum.reduce(%{}, fn he, acc ->
+        vertices = MapSet.to_list(he)
+
+        Enum.reduce(vertices, acc, fn v, acc2 ->
+          neighbors = MapSet.delete(he, v)
+          Map.update(acc2, v, neighbors, &MapSet.union(&1, neighbors))
+        end)
+      end)
+
+    # Ensure isolated vertices are represented with empty neighbor sets
+    Enum.reduce(MapSet.to_list(Hypergraph.vertices(hg)), adj, fn v, acc ->
+      Map.put_new(acc, v, MapSet.new())
+    end)
+  end
+
+  defp estimate_diameter(_hg, adjacency_map) do
+    # Compute graph diameter (longest shortest path) using BFS over adjacency_map.
+    # For disconnected graphs, compute diameter of each connected component and
+    # return the maximum; for an isolated vertex we return 1 (consistent with prior behavior).
+
+    vertices = Map.keys(adjacency_map)
+
+    if vertices == [] do
+      1
+    else
+      distances =
+        Enum.map(vertices, fn v ->
+          # BFS distances from v
+          bfs_distances(adjacency_map, v)
+          |> Map.values()
+          |> Enum.filter(&is_integer/1)
+          |> Enum.max(fn -> 0 end)
+        end)
+
+      max_distance = Enum.max(distances)
+      max(1, max_distance)
+    end
+  end
+
+  # BFS from source returning map vertex -> distance
+  defp bfs_distances(adj_map, source) do
+    bfs_distances(adj_map, [{source, 0}], Map.put(%{}, source, 0))
+  end
+
+  defp bfs_distances(_adj_map, [], visited), do: visited
+
+  defp bfs_distances(adj_map, [{node, dist} | rest], visited) do
+    neighbors = Map.get(adj_map, node, MapSet.new())
+
+    {new_items, new_visited} =
+      Enum.reduce(neighbors, {[], visited}, fn nbr, {items, vis} ->
+        if Map.has_key?(vis, nbr) do
+          {items, vis}
+        else
+          {[{nbr, dist + 1} | items], Map.put(vis, nbr, dist + 1)}
+        end
+      end)
+
+    bfs_distances(adj_map, rest ++ Enum.reverse(new_items), new_visited)
   end
 
   defp calculate_growth_rate(model) do
