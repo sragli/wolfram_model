@@ -4,7 +4,7 @@ defmodule WolframModel.MixProject do
   def project do
     [
       app: :wolfram_model,
-      version: "0.1.0",
+      version: "0.2.0",
       elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
       description: description(),
@@ -43,7 +43,9 @@ defmodule WolframModel.MixProject do
 
   defp deps do
     [
-      {:hypergraph, git: "https://github.com/sragli/hypergraph.git"}
+      {:hypergraph, git: "https://github.com/sragli/hypergraph.git"},
+      {:dialyxir, "~> 1.2", only: [:dev], runtime: false},
+      {:stream_data, "~> 0.6", only: :test}
     ]
   end
 end

@@ -3,14 +3,18 @@ defmodule WolframModel do
   A simplified implementation of the Wolfram Model using hypergraphs.
   """
   alias Hypergraph
-  alias Hypergraph.CorrelationLength
 
   defstruct hypergraph: %Hypergraph{},
             generation: 0,
             causal_network: [],
             evolution_history: [],
             rules: [],
-            id_generator: &WolframModel.default_id_gen/0
+            id_generator: &WolframModel.default_id_gen/0,
+            adjacency_map: %{},
+            # Event bookkeeping
+            next_event_id: 1,
+            event_index: %{},
+            event_map: %{}
 
   @doc false
   @spec default_id_gen() :: integer()
@@ -24,17 +28,53 @@ defmodule WolframModel do
           name: String.t()
         }
 
-  @type evolution_event :: %{
-          generation: non_neg_integer(),
-          rule: rule(),
-          matched_hyperedges: [MapSet.t()],
-          position: any()
-        }
+  defmodule Event do
+    @moduledoc """
+    Represents a single rewrite event in the Wolfram Model evolution.
+
+    Fields:
+    - `id` - unique event id
+    - `generation` - generation when the event occurred
+    - `rule` - the rule applied
+    - `matched_hyperedges` - the hyperedges matched (as MapSet)
+    - `removed` - hyperedges removed (list of MapSet)
+    - `added` - hyperedges added (list of MapSet)
+    - `affected_vertices` - MapSet of vertices affected
+    - `position` - richer position information (map)
+    - `parent_ids` - list of parent event ids
+    - `metadata` - optional map for extra info
+    """
+
+    @enforce_keys [:id, :generation, :rule]
+    defstruct id: nil,
+              generation: 0,
+              rule: nil,
+              matched_hyperedges: [],
+              removed: [],
+              added: [],
+              affected_vertices: MapSet.new(),
+              position: :global,
+              parent_ids: [],
+              metadata: %{}
+
+    @type t :: %__MODULE__{
+            id: integer(),
+            generation: non_neg_integer(),
+            rule: WolframModel.rule(),
+            matched_hyperedges: [MapSet.t()],
+            removed: [MapSet.t()],
+            added: [MapSet.t()],
+            affected_vertices: MapSet.t(),
+            position: any(),
+            parent_ids: [integer()],
+            metadata: map()
+          }
+  end
 
   @type t :: %__MODULE__{
           hypergraph: Hypergraph.t(),
           generation: non_neg_integer(),
-          causal_network: [evolution_event()],
+          causal_network: [Event.t()],
           evolution_history: [Hypergraph.t()],
           rules: [rule()],
           id_generator: (-> integer())
@@ -46,12 +86,14 @@ defmodule WolframModel do
   @spec new(Hypergraph.t(), [rule()], keyword()) :: t()
   def new(initial_hypergraph, rules, opts \\ []) do
     id_gen = Keyword.get(opts, :id_generator, &WolframModel.default_id_gen/0)
+    adj = WolframModel.Analytics.build_adjacency_map(initial_hypergraph)
 
     %__MODULE__{
       hypergraph: initial_hypergraph,
       rules: rules,
       evolution_history: [initial_hypergraph],
-      id_generator: id_gen
+      id_generator: id_gen,
+      adjacency_map: adj
     }
   end
 
@@ -93,16 +135,26 @@ defmodule WolframModel do
 
   @doc """
   Finds all possible rule applications in the current state (multiway evolution).
-  Returns a list of possible next states.
+  Returns a deduplicated list of possible next states (unique hypergraphs).
   """
   @spec multiway_step(t()) :: [t()]
   def multiway_step(model) do
     all_matches = find_all_matches(model)
 
-    all_matches
-    |> Enum.map(fn {rule, match_data} ->
-      apply_rule(model, rule, match_data)
+    next_models =
+      all_matches
+      |> Enum.map(fn {rule, match_data} ->
+        apply_rule(model, rule, match_data)
+      end)
+
+    # Deduplicate by canonical hypergraph representation to avoid redundant
+    # identical states differing only by which match produced them.
+    next_models
+    |> Enum.reduce(%{}, fn m, acc ->
+      key = canonical_hypergraph(m.hypergraph)
+      Map.put_new(acc, key, m)
     end)
+    |> Map.values()
   end
 
   @doc """
@@ -122,22 +174,29 @@ defmodule WolframModel do
   end
 
   @doc """
-  Analyzes the causal structure of evolution events.
+  Analyzes the causal structure of evolution events using event indices for efficiency.
+  Returns counts and density.
   """
   @spec analyze_causality(t()) :: map()
   def analyze_causality(model) do
     events = model.causal_network
 
-    dependencies =
-      for e1 <- events, e2 <- events, causally_related?(e1, e2), do: {e1, e2}
+    # Build unique parent->child edges using event indices to avoid O(n^2) scans
+    edges =
+      events
+      |> Enum.flat_map(fn e ->
+        e.parent_ids
+        |> Enum.map(fn pid -> {pid, e.id} end)
+      end)
+      |> MapSet.new()
 
     %{
       event_count: length(events),
-      causal_edges: length(dependencies),
+      causal_edges: MapSet.size(edges),
       generations: model.generation,
       causal_density:
         if(length(events) > 1,
-          do: length(dependencies) / (length(events) * (length(events) - 1)),
+          do: MapSet.size(edges) / (length(events) * (length(events) - 1)),
           else: 0.0
         )
     }
@@ -154,13 +213,14 @@ defmodule WolframModel do
     hg = model.hypergraph
     stats = Hypergraph.stats(hg)
 
-    adjacency_map = build_adjacency_map(hg)
+    adjacency_map = WolframModel.Analytics.build_adjacency_map(hg)
 
     Map.merge(stats, %{
-      clustering_coefficient: calculate_clustering_coefficient(adjacency_map),
-      estimated_diameter: estimate_diameter(adjacency_map),
-      growth_rate: calculate_growth_rate(model),
-      complexity_measure: calculate_complexity(hg),
+      clustering_coefficient:
+        WolframModel.Analytics.calculate_clustering_coefficient(adjacency_map),
+      estimated_diameter: WolframModel.Analytics.estimate_diameter(adjacency_map),
+      growth_rate: WolframModel.Analytics.calculate_growth_rate(model),
+      complexity_measure: WolframModel.Analytics.calculate_complexity(hg),
       evolution_generation: model.generation
     })
   end
@@ -246,24 +306,79 @@ defmodule WolframModel do
             model.id_generator
           )
 
-        Hypergraph.add_hyperedge(hg, MapSet.to_list(actual_vertices))
+        # Hypergraph.add_hyperedge accepts MapSet directly
+        Hypergraph.add_hyperedge(hg, actual_vertices)
       end)
 
-    # Create evolution event for causal tracking
-    event = %{
+    # Update adjacency_map cache for the modified hypergraph
+    new_adj = WolframModel.Analytics.build_adjacency_map(new_hg)
+
+    # Determine removed and added hyperedges
+    removed_hyperedges = match_data.matched_hyperedges |> Enum.map(& &1)
+
+    # collect added hyperedges (as MapSet) from the replacements
+    added_hyperedges =
+      rule.replacement
+      |> Enum.map(fn replacement_he ->
+        substitute_vertices(
+          replacement_he,
+          match_data.mapping,
+          model.generation,
+          model.id_generator
+        )
+      end)
+
+    # affected vertices
+    affected_vertices =
+      (removed_hyperedges ++ added_hyperedges)
+      |> Enum.flat_map(&MapSet.to_list/1)
+      |> MapSet.new()
+
+    # parent ids: events that previously touched any affected vertex
+    parent_ids =
+      affected_vertices
+      |> Enum.flat_map(fn v -> Map.get(model.event_index, v, MapSet.new()) |> MapSet.to_list() end)
+      |> Enum.uniq()
+
+    # Create evolution event for causal tracking with richer info
+    id = model.next_event_id
+
+    event = %Event{
+      id: id,
       generation: model.generation + 1,
       rule: rule,
-      matched_hyperedges: match_data.matched_hyperedges,
-      # TODO Could be more sophisticated
-      position: :global
+      matched_hyperedges: removed_hyperedges,
+      removed: removed_hyperedges,
+      added: added_hyperedges,
+      affected_vertices: affected_vertices,
+      position: %{
+        type: :local,
+        hyperedge_keys: Enum.map(removed_hyperedges, &canonical_hyperedge/1),
+        vertices: MapSet.to_list(affected_vertices)
+      },
+      parent_ids: parent_ids,
+      metadata: %{}
     }
+
+    # Update event indices for quick causality lookups
+    new_event_index =
+      Enum.reduce(affected_vertices, model.event_index, fn v, acc ->
+        Map.update(acc, v, MapSet.new([id]), &MapSet.put(&1, id))
+      end)
+
+    # Persist event in event map and prepend to causal_network
+    new_event_map = Map.put(model.event_map, id, event)
 
     %{
       model
       | hypergraph: new_hg,
         generation: model.generation + 1,
         causal_network: [event | model.causal_network],
-        evolution_history: [new_hg | model.evolution_history]
+        evolution_history: [new_hg | model.evolution_history],
+        adjacency_map: new_adj,
+        next_event_id: id + 1,
+        event_index: new_event_index,
+        event_map: new_event_map
     }
   end
 
@@ -297,134 +412,54 @@ defmodule WolframModel do
   # causal relationship between these events.
   defp causally_related?(event1, event2) do
     event1.generation < event2.generation and
-      not Enum.empty?(
-        for(
-          e1 <- event1.matched_hyperedges,
-          e2 <- event2.matched_hyperedges,
-          do: MapSet.to_list(MapSet.intersection(e1, e2))
-        )
-        |> List.flatten()
-      )
-  end
-
-  defp calculate_clustering_coefficient(adjacency_map) do
-    vertices = Map.keys(adjacency_map)
-
-    if length(vertices) < 3 do
-      0.0
-    else
-      local_coeffs =
-        Enum.map(vertices, fn v ->
-          neighbors = Map.get(adjacency_map, v, MapSet.new()) |> MapSet.to_list()
-          n = length(neighbors)
-
-          if n < 2 do
-            0.0
-          else
-            # Count connected neighbor pairs using adjacency map
-            pairs = for i <- neighbors, j <- neighbors, i < j, do: {i, j}
-
-            existing =
-              Enum.count(pairs, fn {i, j} ->
-                MapSet.member?(Map.get(adjacency_map, i, MapSet.new()), j)
-              end)
-
-            possible = n * (n - 1) / 2
-            existing / possible
-          end
-        end)
-
-      Enum.sum(local_coeffs) / length(local_coeffs)
-    end
-  end
-
-  defp calculate_complexity(hg) do
-    case CorrelationLength.compute(hg) do
-      {:ok, correlation_length} ->
-        correlation_length
-
-      _ ->
-        # Not enough data to calculate Correlation Length
-        0
-    end
-  end
-
-  defp build_adjacency_map(hg) do
-    # Build a map of vertex -> MapSet of neighbors by iterating hyperedges once.
-    adj =
-      hg
-      |> Hypergraph.hyperedges()
-      |> Enum.reduce(%{}, fn he, acc ->
-        vertices = MapSet.to_list(he)
-
-        Enum.reduce(vertices, acc, fn v, acc2 ->
-          neighbors = MapSet.delete(he, v)
-          Map.update(acc2, v, neighbors, &MapSet.union(&1, neighbors))
+      Enum.any?(event1.matched_hyperedges, fn e1 ->
+        Enum.any?(event2.matched_hyperedges, fn e2 ->
+          MapSet.size(MapSet.intersection(e1, e2)) > 0
         end)
       end)
-
-    # Ensure isolated vertices are represented with empty neighbor sets
-    Enum.reduce(MapSet.to_list(Hypergraph.vertices(hg)), adj, fn v, acc ->
-      Map.put_new(acc, v, MapSet.new())
-    end)
   end
 
-  defp estimate_diameter(adjacency_map) do
-    # Compute graph diameter (longest shortest path) using BFS over adjacency_map.
-    # For disconnected graphs, compute diameter of each connected component and
-    # return the maximum; for an isolated vertex we return 1 (consistent with prior behavior).
+  @doc """
+  Export the causal event graph as nodes and edges suitable for visualization.
 
-    vertices = Map.keys(adjacency_map)
+  Nodes use `event.id`; edges are `{source: parent_id, target: child_id}`.
+  """
+  @spec export_event_graph(t()) :: %{nodes: [map()], edges: [map()]}
+  def export_event_graph(model) do
+    events = model.causal_network
 
-    if vertices == [] do
-      1
-    else
-      distances =
-        Enum.map(vertices, fn v ->
-          # BFS distances from v
-          bfs_distances(adjacency_map, v)
-          |> Map.values()
-          |> Enum.filter(&is_integer/1)
-          |> Enum.max(fn -> 0 end)
-        end)
-
-      max_distance = Enum.max(distances)
-      max(1, max_distance)
-    end
-  end
-
-  # BFS from source returning map vertex -> distance
-  defp bfs_distances(adj_map, source) do
-    bfs_distances(adj_map, [{source, 0}], Map.put(%{}, source, 0))
-  end
-
-  defp bfs_distances(_adj_map, [], visited), do: visited
-
-  defp bfs_distances(adj_map, [{node, dist} | rest], visited) do
-    neighbors = Map.get(adj_map, node, MapSet.new())
-
-    {new_items, new_visited} =
-      Enum.reduce(neighbors, {[], visited}, fn nbr, {items, vis} ->
-        if Map.has_key?(vis, nbr) do
-          {items, vis}
-        else
-          {[{nbr, dist + 1} | items], Map.put(vis, nbr, dist + 1)}
-        end
+    nodes =
+      events
+      |> Enum.map(fn e ->
+        %{
+          id: e.id,
+          generation: e.generation,
+          rule_name: e.rule.name,
+          affected_vertex_count: MapSet.size(e.affected_vertices)
+        }
       end)
 
-    bfs_distances(adj_map, rest ++ Enum.reverse(new_items), new_visited)
+    edges =
+      events
+      |> Enum.flat_map(fn e ->
+        Enum.map(e.parent_ids, fn pid -> %{source: pid, target: e.id} end)
+      end)
+
+    %{nodes: nodes, edges: edges}
   end
 
-  defp calculate_growth_rate(model) do
-    history = model.evolution_history
+  # Canonical representation of hypergraph for quick deduplication.
+  # Returns a sorted list of sorted vertex lists which can be used as a map key.
+  defp canonical_hypergraph(hg) do
+    hg
+    |> Hypergraph.hyperedges()
+    |> Enum.map(&canonical_hyperedge/1)
+    |> Enum.sort()
+  end
 
-    if length(history) < 2 do
-      0.0
-    else
-      recent = List.first(history) |> Hypergraph.vertex_count()
-      previous = Enum.at(history, 1) |> Hypergraph.vertex_count()
-      if previous == 0, do: 0.0, else: (recent - previous) / previous
-    end
+  # Canonical key for a single hyperedge (for event position indexing)
+  defp canonical_hyperedge(he) do
+    Enum.sort(he)
   end
 
   @doc """
