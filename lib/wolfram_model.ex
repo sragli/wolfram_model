@@ -277,13 +277,15 @@ defmodule WolframModel do
   end
 
   defp find_pattern_match(hypergraph, pattern) do
-    hyperedges = Hypergraph.hyperedges(hypergraph)
-    WolframModel.Matcher.match(hyperedges, pattern)
+    hypergraph
+    |> Hypergraph.hyperedges()
+    |> WolframModel.Matcher.match(pattern)
   end
 
   defp find_all_pattern_matches(hypergraph, pattern) do
-    hyperedges = Hypergraph.hyperedges(hypergraph)
-    WolframModel.Matcher.match_all(hyperedges, pattern)
+    hypergraph
+    |> Hypergraph.hyperedges()
+    |> WolframModel.Matcher.match_all(pattern)
   end
 
   defp apply_rule(model, rule, match_data) do
