@@ -194,13 +194,15 @@ defmodule WolframModel do
       event_count: length(events),
       causal_edges: MapSet.size(edges),
       generations: model.generation,
-      causal_density:
-        if(length(events) > 1,
-          do: MapSet.size(edges) / (length(events) * (length(events) - 1)),
-          else: 0.0
-        )
+      causal_density: causal_density(edges, events)
     }
   end
+
+  defp causal_density(edges, events) when length(events) > 1 do
+    MapSet.size(edges) / (length(events) * (length(events) - 1))
+  end
+
+  defp causal_density(_edges, _events), do: 0.0
 
   @doc """
   Extracts emergent properties from the evolved hypergraph.

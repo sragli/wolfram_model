@@ -50,9 +50,7 @@ defmodule WolframModel.Analytics do
       hg
       |> Hypergraph.hyperedges()
       |> Enum.reduce(%{}, fn he, acc ->
-        vertices = MapSet.to_list(he)
-
-        Enum.reduce(vertices, acc, fn v, acc2 ->
+        Enum.reduce(he, acc, fn v, acc2 ->
           neighbors = MapSet.delete(he, v)
           Map.update(acc2, v, neighbors, &MapSet.union(&1, neighbors))
         end)
@@ -71,34 +69,32 @@ defmodule WolframModel.Analytics do
   connections) / (possible neighbor connections).
   """
   @spec calculate_clustering_coefficient(map()) :: float()
+  def calculate_clustering_coefficient(adjacency_map) when length(adjacency_map) < 3, do: 0.0
+
   def calculate_clustering_coefficient(adjacency_map) do
-    vertices = Map.keys(adjacency_map)
+    local_coeffs =
+      adjacency_map
+      |> Map.keys()
+      |> Enum.map(fn v ->
+        neighbors = Map.get(adjacency_map, v, MapSet.new()) |> MapSet.to_list()
+        n = length(neighbors)
 
-    if length(vertices) < 3 do
-      0.0
-    else
-      local_coeffs =
-        Enum.map(vertices, fn v ->
-          neighbors = Map.get(adjacency_map, v, MapSet.new()) |> MapSet.to_list()
-          n = length(neighbors)
+        if n < 2 do
+          0.0
+        else
+          pairs = for i <- neighbors, j <- neighbors, i < j, do: {i, j}
 
-          if n < 2 do
-            0.0
-          else
-            pairs = for i <- neighbors, j <- neighbors, i < j, do: {i, j}
+          existing =
+            Enum.count(pairs, fn {i, j} ->
+              MapSet.member?(Map.get(adjacency_map, i, MapSet.new()), j)
+            end)
 
-            existing =
-              Enum.count(pairs, fn {i, j} ->
-                MapSet.member?(Map.get(adjacency_map, i, MapSet.new()), j)
-              end)
+          possible = n * (n - 1) / 2
+          existing / possible
+        end
+      end)
 
-            possible = n * (n - 1) / 2
-            existing / possible
-          end
-        end)
-
-      Enum.sum(local_coeffs) / length(local_coeffs)
-    end
+    Enum.sum(local_coeffs) / length(local_coeffs)
   end
 
   @doc """
@@ -109,23 +105,19 @@ defmodule WolframModel.Analytics do
   compatible with prior behavior in the project.
   """
   @spec estimate_diameter(map()) :: non_neg_integer()
+  def estimate_diameter(adjacency_map) when length(adjacency_map) == 0, do: 1
+
   def estimate_diameter(adjacency_map) do
-    vertices = Map.keys(adjacency_map)
-
-    if vertices == [] do
-      1
-    else
-      distances =
-        Enum.map(vertices, fn v ->
-          bfs_distances(adjacency_map, v)
-          |> Map.values()
-          |> Enum.filter(&is_integer/1)
-          |> Enum.max(fn -> 0 end)
-        end)
-
-      max_distance = Enum.max(distances)
-      max(1, max_distance)
-    end
+    adjacency_map
+    |> Map.keys()
+    |> Enum.map(fn v ->
+      bfs_distances(adjacency_map, v)
+      |> Map.values()
+      |> Enum.filter(&is_integer/1)
+      |> Enum.max(fn -> 0 end)
+    end)
+    |> Enum.max()
+    |> max(1)
   end
 
   defp bfs_distances(adj_map, source) do
