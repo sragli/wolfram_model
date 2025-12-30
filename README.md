@@ -20,7 +20,7 @@ end
 
 ## Release notes
 
-- **v0.2.0 (2025-12-29)** — Added property tests for two-hyperedge patterns, improved deterministic matching, enhanced event/cause indexing and analytics, fixed various invariants and Dialyzer warnings.
+See `CHANGELOG.md` for full release notes.
 
 ## Key Features
 
