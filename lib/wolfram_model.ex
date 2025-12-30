@@ -35,11 +35,9 @@ defmodule WolframModel do
     - `id` - unique event id
     - `generation` - generation when the event occurred
     - `rule` - the rule applied
-    - `matched_hyperedges` - the hyperedges matched (as MapSet)
     - `removed` - hyperedges removed (list of MapSet)
     - `added` - hyperedges added (list of MapSet)
     - `affected_vertices` - MapSet of vertices affected
-    - `position` - richer position information (map)
     - `parent_ids` - list of parent event ids
     - `metadata` - optional map for extra info
     """
