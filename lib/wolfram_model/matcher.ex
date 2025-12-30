@@ -73,21 +73,7 @@ defmodule WolframModel.Matcher do
   @spec match_two([MapSet.t()] | MapSet.t(MapSet.t()), MapSet.t(), MapSet.t()) ::
           match_result() | nil
   def match_two(hyperedges, p1, p2) do
-    p1_size = MapSet.size(p1)
-    p2_size = MapSet.size(p2)
-
-    for he1 <- hyperedges,
-        he2 <- hyperedges,
-        he1 != he2,
-        MapSet.size(he1) == p1_size,
-        MapSet.size(he2) == p2_size,
-        !MapSet.disjoint?(he1, he2) do
-      mapping = build_mapping_for_two(p1, p2, he1, he2)
-
-      if mapping != nil and map_size(mapping) > 0 do
-        %{mapping: mapping, matched_hyperedges: [he1, he2]}
-      end
-    end
+    match_all_two(hyperedges, p1, p2)
     |> List.first()
   end
 
@@ -108,13 +94,8 @@ defmodule WolframModel.Matcher do
     end
   end
 
-  @spec build_mapping_for_two(MapSet.t(), MapSet.t(), MapSet.t(), MapSet.t()) :: map() | nil
+  @spec build_mapping_for_two(MapSet.t(), MapSet.t(), MapSet.t(), MapSet.t()) :: map()
   def build_mapping_for_two(p1, p2, he1, he2) do
-    p1_list = Enum.sort(p1)
-    p2_list = Enum.sort(p2)
-    he1_list = Enum.sort(he1)
-    he2_list = Enum.sort(he2)
-
     p_shared = Enum.sort(MapSet.intersection(p1, p2))
     he_shared = Enum.sort(MapSet.intersection(he1, he2))
 
@@ -122,14 +103,14 @@ defmodule WolframModel.Matcher do
     shared_mapping = Enum.zip(p_shared, he_shared) |> Map.new()
 
     # Map remaining pattern elements in p1 to remaining actual vertices in he1
-    p1_remaining = p1_list -- p_shared
-    he1_remaining = he1_list -- he_shared
+    p1_remaining = Enum.sort(p1) -- p_shared
+    he1_remaining = Enum.sort(he1) -- he_shared
 
     map_p1 = Enum.zip(p1_remaining, he1_remaining) |> Map.new()
 
     # Map remaining pattern elements in p2 to remaining actual vertices in he2
-    p2_remaining = p2_list -- p_shared
-    he2_remaining = he2_list -- he_shared
+    p2_remaining = Enum.sort(p2) -- p_shared
+    he2_remaining = Enum.sort(he2) -- he_shared
 
     map_p2 = Enum.zip(p2_remaining, he2_remaining) |> Map.new()
 
