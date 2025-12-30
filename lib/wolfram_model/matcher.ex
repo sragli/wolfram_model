@@ -49,8 +49,8 @@ defmodule WolframModel.Matcher do
         nil
 
       matched_he ->
-        pattern_list = Enum.sort(MapSet.to_list(pattern))
-        matched_list = Enum.sort(MapSet.to_list(matched_he))
+        pattern_list = Enum.sort(pattern)
+        matched_list = Enum.sort(matched_he)
         mapping = Enum.zip(pattern_list, matched_list) |> Map.new()
         %{mapping: mapping, matched_hyperedges: [matched_he]}
     end
@@ -63,8 +63,8 @@ defmodule WolframModel.Matcher do
     hyperedges
     |> Enum.filter(fn he -> MapSet.size(he) == pattern_size end)
     |> Enum.map(fn matched_he ->
-      pattern_list = Enum.sort(MapSet.to_list(pattern))
-      matched_list = Enum.sort(MapSet.to_list(matched_he))
+      pattern_list = Enum.sort(pattern)
+      matched_list = Enum.sort(matched_he)
       mapping = Enum.zip(pattern_list, matched_list) |> Map.new()
       %{mapping: mapping, matched_hyperedges: [matched_he]}
     end)
@@ -91,9 +91,8 @@ defmodule WolframModel.Matcher do
     |> List.first()
   end
 
-  @spec match_all_two([MapSet.t()] | MapSet.t(MapSet.t()), MapSet.t(), MapSet.t()) :: [
-          match_result()
-        ]
+  @spec match_all_two([MapSet.t()] | MapSet.t(MapSet.t()), MapSet.t(), MapSet.t()) ::
+          [match_result()]
   def match_all_two(hyperedges, p1, p2) do
     p1_size = MapSet.size(p1)
     p2_size = MapSet.size(p2)
@@ -111,13 +110,13 @@ defmodule WolframModel.Matcher do
 
   @spec build_mapping_for_two(MapSet.t(), MapSet.t(), MapSet.t(), MapSet.t()) :: map() | nil
   def build_mapping_for_two(p1, p2, he1, he2) do
-    p1_list = Enum.sort(MapSet.to_list(p1))
-    p2_list = Enum.sort(MapSet.to_list(p2))
-    he1_list = Enum.sort(MapSet.to_list(he1))
-    he2_list = Enum.sort(MapSet.to_list(he2))
+    p1_list = Enum.sort(p1)
+    p2_list = Enum.sort(p2)
+    he1_list = Enum.sort(he1)
+    he2_list = Enum.sort(he2)
 
-    p_shared = Enum.sort(MapSet.to_list(MapSet.intersection(p1, p2)))
-    he_shared = Enum.sort(MapSet.to_list(MapSet.intersection(he1, he2)))
+    p_shared = Enum.sort(MapSet.intersection(p1, p2))
+    he_shared = Enum.sort(MapSet.intersection(he1, he2))
 
     # Start by mapping shared pattern placeholders to shared actual vertices in sorted order
     shared_mapping = Enum.zip(p_shared, he_shared) |> Map.new()

@@ -16,7 +16,7 @@ defmodule WolframModel.PropertyTest do
   defp hyperedges_list_gen(),
     do: StreamData.list_of(hyperedge_gen(), min_length: 1, max_length: 6)
 
-  property "Matcher.match for single-pattern is deterministic and correct" do
+  test "Matcher.match for single-pattern is deterministic and correct" do
     check all(hyperedges <- hyperedges_list_gen(), max_runs: 50) do
       # pick a hyperedge that will be matched
       he = Enum.random(hyperedges)
@@ -40,7 +40,7 @@ defmodule WolframModel.PropertyTest do
     end
   end
 
-  property "Analytics.build_adjacency_map is symmetric and covers vertices" do
+  test "Analytics.build_adjacency_map is symmetric and covers vertices" do
     check all(hyperedges <- hyperedges_list_gen(), max_runs: 50) do
       hg =
         Enum.reduce(hyperedges, Hypergraph.new(), fn he, acc ->
@@ -62,7 +62,7 @@ defmodule WolframModel.PropertyTest do
     end
   end
 
-  property "Evolve step with :new in replacement produces tuple ids and preserves structure" do
+  test "Evolve step with :new in replacement produces tuple ids and preserves structure" do
     check all(hyperedges <- hyperedges_list_gen(), max_runs: 50) do
       # Build initial hypergraph with at least one hyperedge, pick one
       hg =
@@ -98,7 +98,7 @@ defmodule WolframModel.PropertyTest do
     end
   end
 
-  property "Matcher.match for two-hyperedge patterns produces consistent mappings" do
+  test "Matcher.match for two-hyperedge patterns produces consistent mappings" do
     check all(
             a <- StreamData.uniq_list_of(StreamData.integer(1..30), min_length: 1, max_length: 3),
             b <- StreamData.uniq_list_of(StreamData.integer(1..30), min_length: 1, max_length: 3),
@@ -145,24 +145,27 @@ defmodule WolframModel.PropertyTest do
 
           # mapping values for p1 placeholders correspond exactly to m1
           keys1 = MapSet.to_list(p1)
-          mapped1 = keys1 |> Enum.map(&Map.get(mapping, &1)) |> MapSet.new()
+          Enum.each(keys1, fn k -> assert Map.has_key?(mapping, k) end)
+          mapped1 = keys1 |> Enum.map(&Map.fetch!(mapping, &1)) |> MapSet.new()
           assert MapSet.equal?(mapped1, m1)
 
           # mapping values for p2 placeholders correspond exactly to m2
           keys2 = MapSet.to_list(p2)
-          mapped2 = keys2 |> Enum.map(&Map.get(mapping, &1)) |> MapSet.new()
+          Enum.each(keys2, fn k -> assert Map.has_key?(mapping, k) end)
+          mapped2 = keys2 |> Enum.map(&Map.fetch!(mapping, &1)) |> MapSet.new()
           assert MapSet.equal?(mapped2, m2)
 
           # shared placeholders map to the intersection
           shared_keys = shared_placeholders
-          shared_mapped = shared_keys |> Enum.map(&Map.get(mapping, &1)) |> MapSet.new()
+          Enum.each(shared_keys, fn k -> assert Map.has_key?(mapping, k) end)
+          shared_mapped = shared_keys |> Enum.map(&Map.fetch!(mapping, &1)) |> MapSet.new()
           assert MapSet.equal?(shared_mapped, MapSet.intersection(m1, m2))
         end)
       end
     end
   end
 
-  property "Matcher.match_all is insensitive to input hyperedge ordering" do
+  test "Matcher.match_all is insensitive to input hyperedge ordering" do
     check all(hyperedges <- hyperedges_list_gen(), max_runs: 60) do
       he = Enum.random(hyperedges)
       size = MapSet.size(he)
