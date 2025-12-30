@@ -34,7 +34,7 @@ defmodule WolframModel.CausalityIndexTest do
     assert e2.parent_ids != []
     assert Enum.member?(e2.parent_ids, e1.id)
 
-    stats = WolframModel.analyze_causality(m2)
+    stats = WolframModel.Analytics.analyze_causality(m2)
     assert stats.causal_edges >= 1
   end
 end

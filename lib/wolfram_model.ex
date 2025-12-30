@@ -166,70 +166,6 @@ defmodule WolframModel do
     %{model: model, children: children}
   end
 
-  @doc """
-  Analyzes the causal structure of evolution events using event indices for efficiency.
-  Returns counts and density.
-  """
-  @spec analyze_causality(t()) :: map()
-  def analyze_causality(model) do
-    events = model.causal_network
-
-    # Build unique parent->child edges using event indices to avoid O(n^2) scans
-    edges =
-      events
-      |> Enum.flat_map(fn e ->
-        e.parent_ids
-        |> Enum.map(fn pid -> {pid, e.id} end)
-      end)
-      |> MapSet.new()
-
-    %{
-      event_count: length(events),
-      causal_edges: MapSet.size(edges),
-      generations: model.generation,
-      causal_density: causal_density(edges, events)
-    }
-  end
-
-  defp causal_density(edges, events) when length(events) > 1 do
-    MapSet.size(edges) / (length(events) * (length(events) - 1))
-  end
-
-  defp causal_density(_edges, _events), do: 0.0
-
-  @doc """
-  Creates a visualization-friendly representation of the causal network.
-  """
-  @spec causal_network_data(t()) :: %{nodes: [map()], edges: [map()]}
-  def causal_network_data(model) do
-    events = Enum.with_index(model.causal_network)
-
-    nodes =
-      events
-      |> Enum.map(fn {event, idx} ->
-        %{
-          id: idx,
-          generation: event.generation,
-          rule_name: event.rule.name,
-          type: "event"
-        }
-      end)
-
-    edges =
-      for {e1, idx1} <- events,
-          {e2, idx2} <- events,
-          idx1 < idx2,
-          causally_related?(e1, e2) do
-        %{
-          source: idx1,
-          target: idx2,
-          type: "causal"
-        }
-      end
-
-    %{nodes: nodes, edges: edges}
-  end
-
   defp find_first_match(model) do
     model.rules
     |> Enum.find_value(fn rule ->
@@ -412,6 +348,39 @@ defmodule WolframModel do
     %{nodes: nodes, edges: edges}
   end
 
+  @doc """
+  Creates a visualization-friendly representation of the causal network.
+  """
+  @spec causal_network_data(t()) :: %{nodes: [map()], edges: [map()]}
+  def causal_network_data(model) do
+    events = Enum.with_index(model.causal_network)
+
+    nodes =
+      events
+      |> Enum.map(fn {event, idx} ->
+        %{
+          id: idx,
+          generation: event.generation,
+          rule_name: event.rule.name,
+          type: "event"
+        }
+      end)
+
+    edges =
+      for {e1, idx1} <- events,
+          {e2, idx2} <- events,
+          idx1 < idx2,
+          causally_related?(e1, e2) do
+        %{
+          source: idx1,
+          target: idx2,
+          type: "causal"
+        }
+      end
+
+    %{nodes: nodes, edges: edges}
+  end
+
   # Canonical representation of hypergraph for quick deduplication.
   # Returns a sorted list of sorted vertex lists which can be used as a map key.
   defp canonical_hypergraph(hg) do
@@ -432,7 +401,7 @@ defmodule WolframModel do
   @spec print_stats(t()) :: :ok
   def print_stats(model) do
     emergence = WolframModel.Analytics.analyze_emergence(model)
-    causality = analyze_causality(model)
+    causality = WolframModel.Analytics.analyze_causality(model)
 
     IO.puts("=== Wolfram Model Evolution Statistics ===")
     IO.puts("Generation: #{model.generation}")

@@ -39,6 +39,37 @@ defmodule WolframModel.Analytics do
   end
 
   @doc """
+  Analyzes the causal structure of evolution events using event indices for efficiency.
+  Returns counts and density.
+  """
+  @spec analyze_causality(WolframModel.t()) :: map()
+  def analyze_causality(model) do
+    events = model.causal_network
+
+    # Build unique parent->child edges using event indices to avoid O(n^2) scans
+    edges =
+      events
+      |> Enum.flat_map(fn e ->
+        e.parent_ids
+        |> Enum.map(fn pid -> {pid, e.id} end)
+      end)
+      |> MapSet.new()
+
+    %{
+      event_count: length(events),
+      causal_edges: MapSet.size(edges),
+      generations: model.generation,
+      causal_density: causal_density(edges, events)
+    }
+  end
+
+  defp causal_density(edges, events) when length(events) > 1 do
+    MapSet.size(edges) / (length(events) * (length(events) - 1))
+  end
+
+  defp causal_density(_edges, _events), do: 0.0
+
+  @doc """
   Build an adjacency map from `hg`.
 
   The returned map has the shape `%{vertex => MapSet.t(neighbors)}`. Isolated
