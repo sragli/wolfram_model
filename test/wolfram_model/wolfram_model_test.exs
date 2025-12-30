@@ -31,7 +31,7 @@ defmodule WolframModel.CoreTest do
 
   test "analyze_emergence returns numeric stats" do
     m = Example.simple_universe()
-    em = WolframModel.analyze_emergence(m)
+    em = WolframModel.Analytics.analyze_emergence(m)
     assert is_map(em)
     assert Map.has_key?(em, :vertex_count)
     assert is_number(Map.get(em, :vertex_count))

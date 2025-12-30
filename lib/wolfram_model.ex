@@ -205,29 +205,6 @@ defmodule WolframModel do
   defp causal_density(_edges, _events), do: 0.0
 
   @doc """
-  Extracts emergent properties from the evolved hypergraph.
-
-  Builds an adjacency map once and reuses it across analytics to avoid
-  repeated scanning of hyperedges (performance improvement).
-  """
-  @spec analyze_emergence(t()) :: map()
-  def analyze_emergence(model) do
-    hg = model.hypergraph
-    stats = Hypergraph.stats(hg)
-
-    adjacency_map = WolframModel.Analytics.build_adjacency_map(hg)
-
-    Map.merge(stats, %{
-      clustering_coefficient:
-        WolframModel.Analytics.calculate_clustering_coefficient(adjacency_map),
-      estimated_diameter: WolframModel.Analytics.estimate_diameter(adjacency_map),
-      growth_rate: WolframModel.Analytics.calculate_growth_rate(model),
-      complexity_measure: WolframModel.Analytics.calculate_complexity(hg),
-      evolution_generation: model.generation
-    })
-  end
-
-  @doc """
   Creates a visualization-friendly representation of the causal network.
   """
   @spec causal_network_data(t()) :: %{nodes: [map()], edges: [map()]}
@@ -471,7 +448,7 @@ defmodule WolframModel do
   """
   @spec print_stats(t()) :: :ok
   def print_stats(model) do
-    emergence = analyze_emergence(model)
+    emergence = WolframModel.Analytics.analyze_emergence(model)
     causality = analyze_causality(model)
 
     IO.puts("=== Wolfram Model Evolution Statistics ===")

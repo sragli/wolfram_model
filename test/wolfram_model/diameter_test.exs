@@ -11,7 +11,7 @@ defmodule WolframModel.DiameterTest do
       |> Hypergraph.add_hyperedge([1, 3])
 
     model = WolframModel.new(hg, [])
-    em = WolframModel.analyze_emergence(model)
+    em = WolframModel.Analytics.analyze_emergence(model)
 
     assert em.estimated_diameter == 1
   end
@@ -19,7 +19,7 @@ defmodule WolframModel.DiameterTest do
   test "line of three has diameter 2" do
     hg = Hypergraph.new() |> Hypergraph.add_hyperedge([1, 2]) |> Hypergraph.add_hyperedge([2, 3])
     model = WolframModel.new(hg, [])
-    em = WolframModel.analyze_emergence(model)
+    em = WolframModel.Analytics.analyze_emergence(model)
 
     assert em.estimated_diameter == 2
   end
@@ -27,7 +27,7 @@ defmodule WolframModel.DiameterTest do
   test "isolated vertex returns diameter 1" do
     hg = Hypergraph.new() |> Hypergraph.add_vertex(:a)
     model = WolframModel.new(hg, [])
-    em = WolframModel.analyze_emergence(model)
+    em = WolframModel.Analytics.analyze_emergence(model)
 
     assert em.estimated_diameter == 1
   end
