@@ -28,7 +28,7 @@ defmodule WolframModel.MixProject do
 
   defp package() do
     [
-      files: ~w(lib .formatter.exs mix.exs README.md LICENSE CHANGELOG),
+      files: ~w(lib .formatter.exs mix.exs README.md LICENSE CHANGELOG.md),
       licenses: ["Apache-2.0"],
       links: %{"GitHub" => "https://github.com/sragli/wolfram_model"}
     ]

@@ -31,5 +31,4 @@ defmodule WolframModel.Example do
 
     WolframModel.new(initial_hg, RuleSet.basic_rules())
   end
-
 end
