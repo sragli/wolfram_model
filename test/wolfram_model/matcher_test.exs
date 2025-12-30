@@ -38,7 +38,9 @@ defmodule WolframModel.MatcherTest do
     # Find a state with the expected replacement hyperedge {v1, v3}
     found =
       Enum.any?(next_states, fn st ->
-        Enum.any?(Hypergraph.hyperedges(st.hypergraph), fn he -> MapSet.equal?(he, MapSet.new([:v1, :v3])) end)
+        Enum.any?(Hypergraph.hyperedges(st.hypergraph), fn he ->
+          MapSet.equal?(he, MapSet.new([:v1, :v3]))
+        end)
       end)
 
     assert found

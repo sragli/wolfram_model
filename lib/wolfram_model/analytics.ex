@@ -155,7 +155,8 @@ defmodule WolframModel.Analytics do
   there are fewer than two snapshots or the previous count is zero.
   """
   @spec calculate_growth_rate(WolframModel.t()) :: float()
-  def calculate_growth_rate(%WolframModel{evolution_history: history}) when length(history) < 2, do: 0.0
+  def calculate_growth_rate(%WolframModel{evolution_history: history}) when length(history) < 2,
+    do: 0.0
 
   def calculate_growth_rate(%WolframModel{evolution_history: history}) do
     recent = List.first(history) |> Hypergraph.vertex_count()
