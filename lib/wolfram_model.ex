@@ -10,7 +10,6 @@ defmodule WolframModel do
             evolution_history: [],
             rules: [],
             id_generator: &WolframModel.default_id_gen/0,
-            adjacency_map: %{},
             # Event bookkeeping
             next_event_id: 1,
             event_index: %{},
@@ -49,11 +48,9 @@ defmodule WolframModel do
     defstruct id: nil,
               generation: 0,
               rule: nil,
-              matched_hyperedges: [],
               removed: [],
               added: [],
               affected_vertices: MapSet.new(),
-              position: :global,
               parent_ids: [],
               metadata: %{}
 
@@ -61,11 +58,9 @@ defmodule WolframModel do
             id: integer(),
             generation: non_neg_integer(),
             rule: WolframModel.rule(),
-            matched_hyperedges: [MapSet.t()],
             removed: [MapSet.t()],
             added: [MapSet.t()],
             affected_vertices: MapSet.t(),
-            position: any(),
             parent_ids: [integer()],
             metadata: map()
           }
@@ -86,14 +81,12 @@ defmodule WolframModel do
   @spec new(Hypergraph.t(), [rule()], keyword()) :: t()
   def new(initial_hypergraph, rules, opts \\ []) do
     id_gen = Keyword.get(opts, :id_generator, &WolframModel.default_id_gen/0)
-    adj = WolframModel.Analytics.build_adjacency_map(initial_hypergraph)
 
     %__MODULE__{
       hypergraph: initial_hypergraph,
       rules: rules,
       evolution_history: [initial_hypergraph],
-      id_generator: id_gen,
-      adjacency_map: adj
+      id_generator: id_gen
     }
   end
 
@@ -291,9 +284,6 @@ defmodule WolframModel do
         Hypergraph.add_hyperedge(hg, actual_vertices)
       end)
 
-    # Update adjacency_map cache for the modified hypergraph
-    new_adj = WolframModel.Analytics.build_adjacency_map(new_hg)
-
     # Determine removed and added hyperedges
     removed_hyperedges = match_data.matched_hyperedges |> Enum.map(& &1)
 
@@ -328,15 +318,9 @@ defmodule WolframModel do
       id: id,
       generation: model.generation + 1,
       rule: rule,
-      matched_hyperedges: removed_hyperedges,
       removed: removed_hyperedges,
       added: added_hyperedges,
       affected_vertices: affected_vertices,
-      position: %{
-        type: :local,
-        hyperedge_keys: Enum.map(removed_hyperedges, &canonical_hyperedge/1),
-        vertices: MapSet.to_list(affected_vertices)
-      },
       parent_ids: parent_ids,
       metadata: %{}
     }
@@ -356,7 +340,6 @@ defmodule WolframModel do
         generation: model.generation + 1,
         causal_network: [event | model.causal_network],
         evolution_history: [new_hg | model.evolution_history],
-        adjacency_map: new_adj,
         next_event_id: id + 1,
         event_index: new_event_index,
         event_map: new_event_map
