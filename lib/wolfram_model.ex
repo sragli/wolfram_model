@@ -1,6 +1,8 @@
 defmodule WolframModel do
   @moduledoc """
-  A simplified implementation of the Wolfram Model using hypergraphs.
+  A simplified implementation of the Wolfram Model using hypergraphs,capturing
+  key structural ideas of the Wolfram Model (hypergraph rewriting, event
+  causality, multiway branching).
   """
   alias Hypergraph
 
@@ -348,6 +350,10 @@ defmodule WolframModel do
 
   @doc """
   Creates a visualization-friendly representation of the causal network.
+  Each event (i.e., a specific hypergraph update) becomes a vertex in the causal graph.
+  Implements the partial order of event dependencies (a DAG): if the application of
+  event B depends on the output of event A (e.g., B’s matching pattern overlaps with
+  hyperedges created by A), then the causal graph includes a directed edge A → B.
   """
   @spec causal_network_data(t()) :: %{nodes: [map()], edges: [map()]}
   def causal_network_data(model) do

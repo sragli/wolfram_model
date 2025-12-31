@@ -18,10 +18,6 @@ def deps do
 end
 ```
 
-## Release notes
-
-See `CHANGELOG.md` for full release notes.
-
 ## Key Features
 
 ### Evolution Rules
@@ -42,7 +38,7 @@ See `CHANGELOG.md` for full release notes.
 * Creates branching evolution trees
 * Implements the "multiway graph" concept from Wolfram's theory
 
-### Emergent Analysis
+### Emergent Structure Analysis
 
 * Measures complexity, growth rates, clustering
 * Uses an information-theoretic approach to measure spatial coherence (Correlation Length, the distance between regions where Mutual Information drops to 1/e of its maximum)
@@ -67,3 +63,7 @@ multiway_tree = WolframModel.multiway_explore(universe, 3)
 # Analyze causality
 causality = WolframModel.analyze_causality(evolved)
 ```
+
+## References
+
+* [The Wolfram Physics Project](https://www.wolframphysics.org/)
