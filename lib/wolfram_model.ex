@@ -132,10 +132,9 @@ defmodule WolframModel do
   """
   @spec multiway_step(t()) :: [t()]
   def multiway_step(model) do
-    all_matches = find_all_matches(model)
-
     next_models =
-      all_matches
+      model
+      |> find_all_matches()
       |> Enum.map(fn {rule, match_data} ->
         apply_rule(model, rule, match_data)
       end)
@@ -160,8 +159,10 @@ defmodule WolframModel do
   end
 
   def multiway_explore(model, depth) do
-    next_states = multiway_step(model)
-    children = Enum.map(next_states, &multiway_explore(&1, depth - 1))
+    children =
+      model
+      |> multiway_step()
+      |> Enum.map(&multiway_explore(&1, depth - 1))
 
     %{model: model, children: children}
   end
