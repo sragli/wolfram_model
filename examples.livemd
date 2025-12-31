@@ -10,10 +10,6 @@ Mix.install([
 ])
 ```
 
-## Introduction
-
-This Livebook demonstrates Stephen Wolfram's model of fundamental physics through interactive visualizations. We'll explore how simple rules can create complex causal networks and branching multiway evolution paths.
-
 ## Visualization Helper Module
 
 ```elixir
@@ -61,66 +57,6 @@ defmodule WolframViz do
   end
   
   @doc """
-  Creates data for hypergraph state visualization
-  """
-  def hypergraph_state_data(model) do
-    hg = model.hypergraph
-    vertices = Hypergraph.vertices(hg)
-    hyperedges = Hypergraph.hyperedges(hg)
-    
-    # Create vertex nodes
-    vertex_nodes = 
-      vertices
-      |> Enum.with_index()
-      |> Enum.map(fn {vertex, idx} ->
-        %{
-          id: "v_#{vertex}",
-          label: to_string(vertex),
-          type: "vertex",
-          x: 100 + rem(idx, 8) * 80,
-          y: 100 + div(idx, 8) * 80,
-          size: 60
-        }
-      end)
-    
-    # Create hyperedge nodes
-    hyperedge_nodes =
-      hyperedges
-      |> Enum.with_index()
-      |> Enum.map(fn {hyperedge, idx} ->
-        hyperedge_list = MapSet.to_list(hyperedge)
-        %{
-          id: "he_#{idx}",
-          label: "E#{idx}",
-          type: "hyperedge",
-          x: 200 + rem(idx, 6) * 100,
-          y: 250 + div(idx, 6) * 100,
-          size: MapSet.size(hyperedge) * 20,
-          members: Enum.join(hyperedge_list, ", ")
-        }
-      end)
-    
-    # Create links
-    links =
-      hyperedges
-      |> Enum.with_index()
-      |> Enum.flat_map(fn {hyperedge, he_idx} ->
-        hyperedge
-        |> MapSet.to_list()
-        |> Enum.map(fn vertex ->
-          %{
-            source: "v_#{vertex}",
-            target: "he_#{he_idx}",
-            type: "membership"
-          }
-        end)
-      end)
-    
-    nodes = vertex_nodes ++ hyperedge_nodes
-    %{nodes: nodes, links: links}
-  end
-  
-  @doc """
   Creates evolution timeline data
   """
   def evolution_timeline_data(model) do
@@ -140,12 +76,12 @@ defmodule WolframViz do
 end
 ```
 
-## Universe Creator
+## Universe
 
 ```elixir
-steps = 15
+steps = 20
 
-initial = WolframModel.Example.simple_universe()
+initial = WolframModel.Example.complex_universe()
 
 evolved = WolframModel.evolve_steps(initial, steps)
 
@@ -161,7 +97,7 @@ data = WolframModel.causal_network_data(evolved)
 This shows how evolution events are causally connected through time:
 
 ```elixir
-CausalGraphSVG.to_svg(data)
+WolframModel.CausalGraphSVG.to_svg(data)
 |> Kino.HTML.new()
 ```
 
@@ -171,12 +107,13 @@ CausalGraphSVG.to_svg(data)
 depth = 5
 
 multiway_tree = WolframModel.multiway_explore(initial, depth)
-{nodes, _edges} = WolframViz.multiway_tree_data(multiway_tree)
 ```
 
 This shows all possible evolution paths branching out from the initial state:
 
 ```elixir
+{nodes, _edges} = WolframViz.multiway_tree_data(multiway_tree)
+
 VegaLite.new(width: 600, height: 600, title: "Multiway Evolution Tree")
 |> VegaLite.data_from_values(nodes)
 |> VegaLite.mark(:circle, stroke: "darkblue", strokeWidth: 2)
@@ -194,10 +131,6 @@ VegaLite.new(width: 600, height: 600, title: "Multiway Evolution Tree")
   [field: "generation", type: :quantitative, title: "Generation"]
 ])
 ```
-
-## Current Hypergraph State
-
-This shows the current structure of the evolved hypergraph:
 
 ## Evolution Timeline
 
@@ -226,8 +159,6 @@ VegaLite.new(width: 600, height: 300, title: "Universe Evolution Timeline")
 Compare how different measures of complexity evolve:
 
 ```elixir
-data = WolframViz.evolution_timeline_data(evolved)
-
 # Transform data for multiple series
 series_data = 
   data
@@ -254,36 +185,3 @@ VegaLite.new(width: 600, height: 350, title: "Complexity Measures Over Time")
   [field: "value", type: :quantitative]
 ])
 ```
-
-## Theoretical Connections
-
-### Understanding the Wolfram Model Through Visualization
-
-#### What We're Seeing
-
-**Causal Networks** show how each rule application creates events that influence future evolution. This represents Wolfram's idea that spacetime emerges from causal relationships between computational events.
-
-**Multiway Evolution** displays the "quantum multiverse" - all possible ways the universe could evolve from the same starting point. This connects to quantum mechanics through parallel evolution paths.
-
-**Hypergraph Growth** demonstrates how simple local rules can create complex global structures, potentially explaining how the complexity of physics emerges from simple computational foundations.
-
-### Key Insights from Wolfram's Theory
-
-1. **Computational Irreducibility**: You cannot predict the final state without running the computation - just like our visualizations show unexpected emergent patterns.
-
-2. **Emergent Spacetime**: The connectivity structure of the hypergraph represents space, while the sequence of rule applications represents time.
-
-3. **Causal Invariance**: Different sequences of rule applications that maintain causal relationships might correspond to relativity's coordinate invariance.
-
-4. **Quantum Superposition**: The multiway graph represents all possible quantum states evolving simultaneously until "observation" collapses to a specific path.
-
-### Experimental Questions
-
-Try these experiments with the interactive controls:
-
-* **Does complexity always increase?** Try different rule combinations and see if some lead to simplification.
-* **Do certain rules create more branching?** Compare multiway trees for different rule sets.
-* **Can you find cyclic patterns?** Look for hypergraph states that repeat after several generations.
-* **What creates the most causal density?** Which rules generate the most interconnected causal networks?
-
-This computational universe laboratory lets you explore the fundamental question: **Could reality itself be the result of simple computational rules operating on a hypergraph?**

@@ -1,4 +1,4 @@
-defmodule CausalGraphSVG do
+defmodule WolframModel.CausalGraphSVG do
   @moduledoc """
   Converts causal network data into an SVG visualization.
   """
