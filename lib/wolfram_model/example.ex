@@ -29,6 +29,6 @@ defmodule WolframModel.Example do
       |> Hypergraph.add_hyperedge([4, 5])
       |> Hypergraph.add_hyperedge([1, 5])
 
-    WolframModel.new(initial_hg, RuleSet.basic_rules())
+    WolframModel.new(initial_hg, RuleSet.rule_set(:growth))
   end
 end

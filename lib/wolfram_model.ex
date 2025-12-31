@@ -301,35 +301,6 @@ defmodule WolframModel do
   end
 
   @doc """
-  Export the causal event graph as nodes and edges suitable for visualization.
-
-  Nodes use `event.id`; edges are `{source: parent_id, target: child_id}`.
-  """
-  @spec export_event_graph(t()) :: %{nodes: [map()], edges: [map()]}
-  def export_event_graph(model) do
-    events = model.causal_network
-
-    nodes =
-      events
-      |> Enum.map(fn e ->
-        %{
-          id: e.id,
-          generation: e.generation,
-          rule_name: e.rule.name,
-          affected_vertex_count: MapSet.size(e.affected_vertices)
-        }
-      end)
-
-    edges =
-      events
-      |> Enum.flat_map(fn e ->
-        Enum.map(e.parent_ids, fn pid -> %{source: pid, target: e.id} end)
-      end)
-
-    %{nodes: nodes, edges: edges}
-  end
-
-  @doc """
   Creates a visualization-friendly representation of the causal network.
   Each event (i.e., a specific hypergraph update) becomes a vertex in the causal graph.
   Implements the partial order of event dependencies (a DAG): if the application of

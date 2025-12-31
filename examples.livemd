@@ -10,7 +10,7 @@ Mix.install([
 ])
 ```
 
-## Visualization Helper Module
+## Visualization Helper
 
 ```elixir
 defmodule WolframViz do
@@ -88,7 +88,7 @@ evolved = WolframModel.evolve_steps(initial, steps)
 final_stats = Hypergraph.stats(evolved.hypergraph)
 ```
 
-## Causal Network Visualization
+## Causal Network
 
 ```elixir
 data = WolframModel.causal_network_data(evolved)
@@ -101,7 +101,7 @@ WolframModel.CausalGraphSVG.to_svg(data)
 |> Kino.HTML.new()
 ```
 
-## Multiway Evolution Tree
+## Multiway Evolution
 
 ```elixir
 depth = 5
@@ -154,7 +154,7 @@ VegaLite.new(width: 600, height: 300, title: "Universe Evolution Timeline")
 ])
 ```
 
-## Complexity Growth Chart
+## Complexity Growth
 
 Compare how different measures of complexity evolve:
 
