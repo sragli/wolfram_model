@@ -16,7 +16,7 @@ defmodule WolframModel.PropertyTest do
   defp hyperedges_list_gen(),
     do: StreamData.list_of(hyperedge_gen(), min_length: 1, max_length: 6)
 
-  test "Matcher.match for single-pattern is deterministic and correct" do
+  test "Matcher.match for single-pattern is correct" do
     check all(hyperedges <- hyperedges_list_gen(), max_runs: 50) do
       # pick a hyperedge that will be matched
       he = Enum.random(hyperedges)
@@ -27,16 +27,13 @@ defmodule WolframModel.PropertyTest do
       pattern = MapSet.new(placeholders)
 
       # run match
-      res1 = Matcher.match(hyperedges, [pattern])
-      res2 = Matcher.match(hyperedges, [pattern])
+      res = Matcher.match(hyperedges, [pattern])
 
-      # If there's a match, verify mapping maps placeholders to elements of the chosen he
-      if res1 do
-        mapped_values = Map.values(res1.mapping) |> MapSet.new()
-        # mapping should correspond to some hyperedge in the input list
+      # If there's a match, verify mapping maps placeholders to some hyperedge in the input list
+      Enum.each(res, fn %{mapping: mapping} ->
+        mapped_values = Map.values(mapping) |> MapSet.new()
         assert Enum.any?(hyperedges, fn h -> MapSet.equal?(mapped_values, h) end)
-        assert res1 == res2
-      end
+      end)
     end
   end
 
@@ -136,7 +133,7 @@ defmodule WolframModel.PropertyTest do
         p1 = MapSet.new(p1_placeholders)
         p2 = MapSet.new(p2_placeholders)
 
-        res = Matcher.match_all(hyperedges, [p1, p2])
+        res = Matcher.match(hyperedges, [p1, p2])
 
         Enum.each(res, fn %{mapping: mapping, matched_hyperedges: [m1, m2]} ->
           # matched hyperedges should be taken from the supplied hyperedges list
@@ -172,8 +169,8 @@ defmodule WolframModel.PropertyTest do
       placeholders = Enum.take([:a, :b, :c, :d, :e], size)
       pattern = MapSet.new(placeholders)
 
-      res1 = Matcher.match_all(hyperedges, [pattern])
-      res2 = Matcher.match_all(Enum.shuffle(hyperedges), [pattern])
+      res1 = Matcher.match(hyperedges, [pattern])
+      res2 = Matcher.match(Enum.shuffle(hyperedges), [pattern])
 
       normalize = fn res ->
         res

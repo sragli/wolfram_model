@@ -101,7 +101,7 @@ defmodule WolframModel do
     id_gen = Keyword.get(opts, :id_generator)
     model = if id_gen, do: %{model | id_generator: id_gen}, else: model
 
-    case find_first_match(model) do
+    case find_all_matches(model) |> List.first() do
       nil ->
         # No rules applicable
         model
@@ -166,34 +166,14 @@ defmodule WolframModel do
     %{model: model, children: children}
   end
 
-  defp find_first_match(model) do
-    model.rules
-    |> Enum.find_value(fn rule ->
-      case find_pattern_match(model.hypergraph, rule.pattern) do
-        nil -> nil
-        match_data -> {rule, match_data}
-      end
-    end)
-  end
-
   defp find_all_matches(model) do
     model.rules
     |> Enum.flat_map(fn rule ->
-      find_all_pattern_matches(model.hypergraph, rule.pattern)
+      model.hypergraph
+      |> Hypergraph.hyperedges()
+      |> WolframModel.Matcher.match(rule.pattern)
       |> Enum.map(fn match_data -> {rule, match_data} end)
     end)
-  end
-
-  defp find_pattern_match(hypergraph, pattern) do
-    hypergraph
-    |> Hypergraph.hyperedges()
-    |> WolframModel.Matcher.match(pattern)
-  end
-
-  defp find_all_pattern_matches(hypergraph, pattern) do
-    hypergraph
-    |> Hypergraph.hyperedges()
-    |> WolframModel.Matcher.match_all(pattern)
   end
 
   defp apply_rule(model, rule, match_data) do

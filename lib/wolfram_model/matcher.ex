@@ -11,75 +11,21 @@ defmodule WolframModel.Matcher do
 
   @type match_result :: %{mapping: map(), matched_hyperedges: [MapSet.t()]}
 
-  @spec match([MapSet.t()] | MapSet.t(MapSet.t()), [MapSet.t()]) :: match_result() | nil
+  @spec match([MapSet.t()] | MapSet.t(MapSet.t()), [MapSet.t()]) :: [match_result()]
   def match(hyperedges, [single_pattern]) do
-    match_single(hyperedges, single_pattern)
-  end
-
-  def match(hyperedges, [p1, p2]) do
-    match_two(hyperedges, p1, p2)
-  end
-
-  # Fallback for unsupported patterns
-  @spec match(term(), term()) :: nil
-  def match(_hyperedges, _pattern), do: nil
-
-  @spec match_all([MapSet.t()] | MapSet.t(MapSet.t()), [MapSet.t()]) :: [match_result()]
-  def match_all(hyperedges, [single_pattern]) do
-    match_all_single(hyperedges, single_pattern)
-  end
-
-  def match_all(hyperedges, [p1, p2]) do
-    match_all_two(hyperedges, p1, p2)
-  end
-
-  # Fallback for unsupported patterns
-  @spec match_all(term(), term()) :: [match_result()]
-  def match_all(_hyperedges, _pattern), do: []
-
-  @spec match_single([MapSet.t()] | MapSet.t(MapSet.t()), MapSet.t()) ::
-          match_result() | nil
-  def match_single(hyperedges, pattern) do
-    pattern_size = MapSet.size(pattern)
-
-    hyperedges
-    |> Enum.find(fn he -> MapSet.size(he) == pattern_size end)
-    |> case do
-      nil ->
-        nil
-
-      matched_he ->
-        pattern_list = Enum.sort(pattern)
-        matched_list = Enum.sort(matched_he)
-        mapping = Enum.zip(pattern_list, matched_list) |> Map.new()
-        %{mapping: mapping, matched_hyperedges: [matched_he]}
-    end
-  end
-
-  @spec match_all_single([MapSet.t()] | MapSet.t(MapSet.t()), MapSet.t()) :: [match_result()]
-  def match_all_single(hyperedges, pattern) do
-    pattern_size = MapSet.size(pattern)
+    pattern_size = MapSet.size(single_pattern)
 
     hyperedges
     |> Enum.filter(fn he -> MapSet.size(he) == pattern_size end)
     |> Enum.map(fn matched_he ->
-      pattern_list = Enum.sort(pattern)
+      pattern_list = Enum.sort(single_pattern)
       matched_list = Enum.sort(matched_he)
       mapping = Enum.zip(pattern_list, matched_list) |> Map.new()
       %{mapping: mapping, matched_hyperedges: [matched_he]}
     end)
   end
 
-  @spec match_two([MapSet.t()] | MapSet.t(MapSet.t()), MapSet.t(), MapSet.t()) ::
-          match_result() | nil
-  def match_two(hyperedges, p1, p2) do
-    match_all_two(hyperedges, p1, p2)
-    |> List.first()
-  end
-
-  @spec match_all_two([MapSet.t()] | MapSet.t(MapSet.t()), MapSet.t(), MapSet.t()) ::
-          [match_result()]
-  def match_all_two(hyperedges, p1, p2) do
+  def match(hyperedges, [p1, p2]) do
     p1_size = MapSet.size(p1)
     p2_size = MapSet.size(p2)
 
@@ -93,6 +39,10 @@ defmodule WolframModel.Matcher do
       %{mapping: mapping, matched_hyperedges: [he1, he2]}
     end
   end
+
+  # Fallback for unsupported patterns
+  @spec match(term(), term()) :: []
+  def match(_hyperedges, _pattern), do: []
 
   @spec build_mapping_for_two(MapSet.t(), MapSet.t(), MapSet.t(), MapSet.t()) :: map()
   def build_mapping_for_two(p1, p2, he1, he2) do
