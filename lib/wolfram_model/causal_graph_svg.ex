@@ -11,12 +11,13 @@ defmodule WolframModel.CausalGraphSVG do
   def to_svg(%{nodes: nodes, edges: edges}) do
     positions = layout_nodes(nodes)
 
+    max_gen = nodes |> Enum.map(& &1.generation) |> Enum.max(fn -> 1 end)
     width = Enum.count(nodes) * @x_spacing + 2 * @margin
-    height = @y_spacing * 3
+    height = (max_gen + 1) * @y_spacing + 2 * @margin
 
     edges_svg =
       edges
-      |> Enum.map(fn %{from: a, to: b} ->
+      |> Enum.map(fn %{source: a, target: b} ->
         {x1, y1} = positions[a]
         {x2, y2} = positions[b]
 
@@ -61,12 +62,18 @@ defmodule WolframModel.CausalGraphSVG do
   end
 
   defp layout_nodes(nodes) do
+    # Group by generation: nodes in the same generation share a y-coordinate
+    # and are spread evenly along x within that row.
     nodes
-    |> Enum.with_index()
-    |> Enum.map(fn {%{id: id}, i} ->
-      x = @margin + i * @x_spacing
-      y = @margin + @y_spacing
-      {id, {x, y}}
+    |> Enum.group_by(& &1.generation)
+    |> Enum.flat_map(fn {gen, gen_nodes} ->
+      gen_nodes
+      |> Enum.with_index()
+      |> Enum.map(fn {%{id: id}, i} ->
+        x = @margin + i * @x_spacing
+        y = @margin + gen * @y_spacing
+        {id, {x, y}}
+      end)
     end)
     |> Map.new()
   end

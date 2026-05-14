@@ -301,4 +301,3 @@ VegaLite.new(width: 600, height: 350, title: "Complexity Measures Over Time")
   [field: "value", type: :quantitative]
 ])
 ```
-
