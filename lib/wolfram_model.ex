@@ -263,41 +263,37 @@ defmodule WolframModel do
     }
   end
 
-  defp substitute_vertices(
-         replacement_he,
-         mapping,
-         generation,
-         id_generator
-       ) do
+  # Substitutes vertices in a replacement hyperedge using the pattern mapping.
+  # Any atom present in the mapping is replaced with its mapped value.
+  # Any atom NOT in the mapping is treated as a fresh-vertex tag and produces a
+  # new unique vertex tuple {atom, generation, id}. This handles any rule
+  # generically without a hardcoded list of "new vertex" atoms.
+  # Two-element {atom, integer} tuples are treated as spacetime coordinates and
+  # kept verbatim (they appear as literals in spacetime rules).
+  defp substitute_vertices(replacement_he, mapping, generation, id_generator) do
     replacement_he
     |> MapSet.to_list()
     |> Enum.map(fn vertex ->
-      case vertex do
-        :new -> {:new, generation, id_generator.()}
-        :center -> {:center, generation, id_generator.()}
-        :parallel -> {:parallel, generation, id_generator.()}
-        :new1 -> {:new1, generation, id_generator.()}
-        :new2 -> {:new2, generation, id_generator.()}
-        :new3 -> {:new3, generation, id_generator.()}
-        # For spacetime coordinates
-        {tag, offset} -> {tag, offset}
-        _ -> Map.get(mapping, vertex, vertex)
+      case Map.fetch(mapping, vertex) do
+        {:ok, mapped} ->
+          mapped
+
+        :error ->
+          case vertex do
+            {tag, offset} when is_atom(tag) and is_integer(offset) ->
+              # Spacetime coordinate literal — keep as-is
+              {tag, offset}
+
+            atom when is_atom(atom) ->
+              # Unbound atom in replacement = new vertex generator
+              {atom, generation, id_generator.()}
+
+            other ->
+              other
+          end
       end
     end)
     |> MapSet.new()
-  end
-
-  # Two rewrite events are causally connected if they involve overlapping elements from the
-  # hypergraph. For instance, if one rule application modifies a hyperedge, and a subsequent
-  # rule application involves that same hyperedge (or elements connected to it), there's a
-  # causal relationship between these events.
-  defp causally_related?(event1, event2) do
-    event1.generation < event2.generation and
-      Enum.any?(event1.matched_hyperedges, fn e1 ->
-        Enum.any?(event2.matched_hyperedges, fn e2 ->
-          MapSet.size(MapSet.intersection(e1, e2)) > 0
-        end)
-      end)
   end
 
   @doc """
@@ -311,6 +307,12 @@ defmodule WolframModel do
   def causal_network_data(model) do
     events = Enum.with_index(model.causal_network)
 
+    # Map event id → index in the causal_network list for edge construction
+    id_to_idx =
+      events
+      |> Enum.map(fn {event, idx} -> {event.id, idx} end)
+      |> Map.new()
+
     nodes =
       events
       |> Enum.map(fn {event, idx} ->
@@ -323,16 +325,17 @@ defmodule WolframModel do
       end)
 
     edges =
-      for {e1, idx1} <- events,
-          {e2, idx2} <- events,
-          idx1 < idx2,
-          causally_related?(e1, e2) do
-        %{
-          source: idx1,
-          target: idx2,
-          type: "causal"
-        }
-      end
+      events
+      |> Enum.flat_map(fn {event, idx} ->
+        event.parent_ids
+        |> Enum.flat_map(fn pid ->
+          case Map.fetch(id_to_idx, pid) do
+            {:ok, parent_idx} -> [%{source: parent_idx, target: idx, type: "causal"}]
+            :error -> []
+          end
+        end)
+      end)
+      |> Enum.uniq()
 
     %{nodes: nodes, edges: edges}
   end
@@ -349,6 +352,170 @@ defmodule WolframModel do
   # Canonical key for a single hyperedge (for event position indexing)
   defp canonical_hyperedge(he) do
     Enum.sort(he)
+  end
+
+  @doc """
+  Computes foliations of the causal network: layers of events where each layer
+  contains only events whose parents all belong to earlier layers (spacelike
+  slices of the causal partial order).
+
+  Returns a list of lists of `Event.t()`, ordered from earliest to latest layer.
+  Layer 0 contains root events (no causal parents). Layer N contains events
+  whose deepest ancestor is in layer N-1.
+  """
+  @spec foliations(t()) :: [[Event.t()]]
+  def foliations(model) do
+    events =
+      model.event_map
+      |> Enum.sort_by(fn {id, _} -> id end)
+      |> Enum.map(fn {_, event} -> event end)
+
+    if events == [] do
+      []
+    else
+      {layer_groups, _id_to_layer} =
+        Enum.reduce(events, {%{}, %{}}, fn event, {layer_groups, id_to_layer} ->
+          layer =
+            if event.parent_ids == [] do
+              0
+            else
+              event.parent_ids
+              |> Enum.map(fn pid -> Map.get(id_to_layer, pid, 0) end)
+              |> Enum.max()
+              |> Kernel.+(1)
+            end
+
+          updated_groups = Map.update(layer_groups, layer, [event], &(&1 ++ [event]))
+          {updated_groups, Map.put(id_to_layer, event.id, layer)}
+        end)
+
+      layer_groups
+      |> Enum.sort_by(fn {layer, _} -> layer end)
+      |> Enum.map(fn {_, evts} -> evts end)
+    end
+  end
+
+  @doc """
+  Builds the branchial graph for one step of multiway evolution.
+
+  Nodes are the possible rule matches at the current state. Two matches are
+  branchially connected when they overlap (touch at least one common hyperedge),
+  meaning they represent conflicting/branching rewrite choices.
+
+  Returns `%{nodes: [map()], edges: [map()]}`.
+  """
+  @spec branchial_graph(t()) :: %{nodes: [map()], edges: [map()]}
+  def branchial_graph(model) do
+    indexed =
+      find_all_matches(model)
+      |> Enum.with_index()
+
+    nodes =
+      Enum.map(indexed, fn {{rule, match_data}, idx} ->
+        %{
+          id: idx,
+          rule_name: rule.name,
+          matched_hyperedges: match_data.matched_hyperedges
+        }
+      end)
+
+    edges =
+      for {{_, m1}, i} <- indexed,
+          {{_, m2}, j} <- indexed,
+          i < j,
+          Enum.any?(m1.matched_hyperedges, fn he1 ->
+            Enum.any?(m2.matched_hyperedges, fn he2 ->
+              not MapSet.disjoint?(he1, he2)
+            end)
+          end) do
+        %{source: i, target: j}
+      end
+
+    %{nodes: nodes, edges: edges}
+  end
+
+  @doc """
+  Checks approximate causal invariance (confluence) for the current model state.
+
+  Tests all pairs of non-overlapping rule matches: applies them in both orders
+  and verifies that the resulting hypergraphs are structurally equivalent (same
+  normalized canonical form after replacing fresh-vertex IDs with stable tokens).
+
+  Returns `true` if all tested pairs commute, `false` otherwise.
+  An empty match set (no applicable rules) is trivially invariant.
+  """
+  @spec causally_invariant?(t()) :: boolean()
+  def causally_invariant?(model) do
+    indexed = find_all_matches(model) |> Enum.with_index()
+
+    pairs =
+      for {{r1, m1}, i} <- indexed,
+          {{r2, m2}, j} <- indexed,
+          i < j,
+          MapSet.disjoint?(
+            MapSet.new(m1.matched_hyperedges),
+            MapSet.new(m2.matched_hyperedges)
+          ) do
+        {r1, m1, r2, m2}
+      end
+
+    Enum.all?(pairs, fn {r1, m1, r2, m2} ->
+      s12 = model |> apply_rule(r1, m1) |> apply_rule(r2, m2)
+      s21 = model |> apply_rule(r2, m2) |> apply_rule(r1, m1)
+      normalize_for_confluence(s12.hypergraph) == normalize_for_confluence(s21.hypergraph)
+    end)
+  end
+
+  # Normalize a hypergraph for confluence comparison by replacing all fresh
+  # vertex tuples {atom, int, int} with stable positional tokens so that two
+  # structurally identical hypergraphs compare equal even with different IDs.
+  defp normalize_for_confluence(hg) do
+    edges = Hypergraph.hyperedges(hg)
+
+    fresh_map =
+      edges
+      |> Enum.flat_map(&MapSet.to_list/1)
+      |> Enum.filter(&fresh_vertex?/1)
+      |> Enum.uniq()
+      |> Enum.sort()
+      |> Enum.with_index()
+      |> Map.new(fn {v, i} -> {v, {:_fresh, i}} end)
+
+    edges
+    |> Enum.map(fn he ->
+      he |> MapSet.to_list() |> Enum.map(&Map.get(fresh_map, &1, &1)) |> Enum.sort()
+    end)
+    |> Enum.sort()
+  end
+
+  defp fresh_vertex?({a, g, id}) when is_atom(a) and is_integer(g) and is_integer(id), do: true
+  defp fresh_vertex?(_), do: false
+
+  @doc """
+  Exports the causal event graph as a map of nodes and edges.
+
+  Nodes correspond to events in chronological order. Edges link parent events to
+  child events using the `parent_ids` recorded during evolution.
+  """
+  @spec export_event_graph(t()) :: %{nodes: [map()], edges: [map()]}
+  def export_event_graph(model) do
+    events = Enum.reverse(model.causal_network)
+
+    nodes =
+      Enum.map(events, fn event ->
+        %{id: event.id, generation: event.generation, rule_name: event.rule.name}
+      end)
+
+    edges =
+      events
+      |> Enum.flat_map(fn event ->
+        Enum.map(event.parent_ids, fn pid ->
+          %{source: pid, target: event.id}
+        end)
+      end)
+      |> Enum.uniq()
+
+    %{nodes: nodes, edges: edges}
   end
 
   @doc """

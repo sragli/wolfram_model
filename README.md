@@ -13,7 +13,7 @@ This repository contains a compact Elixir implementation of the Wolfram Model, p
 ```elixir
 def deps do
   [
-    {:wolfram_model, "~> 0.2.0"}
+    {:wolfram_model, "~> 0.3.0"}
   ]
 end
 ```
@@ -28,22 +28,34 @@ end
 
 ### Causal Networks
 
-* Tracks every rule application as an event
+* Tracks every rule application as an event with `parent_ids` for O(1) causal lookup
 * Builds causal relationships between events
-* Analyzes causal structure and density
+* Exports causal graph via `export_event_graph/1` and `causal_network_data/1`
+* Computes spacelike foliations (layers of causally independent events) via `foliations/1`
+* Checks causal invariance (confluence) of rule applications via `causally_invariant?/1`
 
 ### Multiway Evolution
 
 * Explores all possible rule applications
 * Creates branching evolution trees
 * Implements the "multiway graph" concept from Wolfram's theory
+* Builds the branchial graph of conflicting branches via `branchial_graph/1`
 
 ### Emergent Structure Analysis
 
 * Measures complexity, growth rates, clustering
-* Uses an information-theoretic approach to measure spatial coherence (Correlation Length, the distance between regions where Mutual Information drops to 1/e of its maximum)
+* Estimates effective spatial dimension via geodesic ball growth (`Analytics.estimate_dimension/1`)
+* Uses an information-theoretic approach to measure spatial coherence (Correlation Length)
 * Tracks how simple rules lead to complex structures
 * Analyzes diameter and connectivity patterns
+
+### Rule Analysis
+
+* `RuleAnalysis.reversible?/1` — checks structural reversibility
+* `RuleAnalysis.self_complementary?/1` — checks pattern/replacement symmetry
+* `RuleAnalysis.introduces_new_vertices?/1` — detects vertex-generating rules
+* `RuleAnalysis.hyperedge_delta/1` — net hyperedge count change per application
+* `RuleAnalysis.arity/1` — hyperedge size signature of a rule
 
 ## Example Usage
 
@@ -61,7 +73,25 @@ WolframModel.print_stats(evolved)
 multiway_tree = WolframModel.multiway_explore(universe, 3)
 
 # Analyze causality
-causality = WolframModel.analyze_causality(evolved)
+causality = WolframModel.Analytics.analyze_causality(evolved)
+
+# Compute spacelike foliations
+layers = WolframModel.foliations(evolved)
+
+# Explore the branchial graph of conflicting branches
+bg = WolframModel.branchial_graph(universe)
+
+# Check if rule applications commute
+WolframModel.causally_invariant?(universe)
+
+# Estimate the emergent spatial dimension
+dim = WolframModel.Analytics.estimate_dimension(evolved.hypergraph)
+
+# Inspect rule properties
+alias WolframModel.RuleAnalysis
+RuleAnalysis.reversible?(rule)
+RuleAnalysis.introduces_new_vertices?(rule)
+RuleAnalysis.hyperedge_delta(rule)
 ```
 
 ## References

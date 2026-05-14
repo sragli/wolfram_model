@@ -100,7 +100,7 @@ defmodule WolframModel.Analytics do
   connections) / (possible neighbor connections).
   """
   @spec calculate_clustering_coefficient(map()) :: float()
-  def calculate_clustering_coefficient(adjacency_map) when length(adjacency_map) < 3, do: 0.0
+  def calculate_clustering_coefficient(adjacency_map) when map_size(adjacency_map) < 3, do: 0.0
 
   def calculate_clustering_coefficient(adjacency_map) do
     local_coeffs =
@@ -198,5 +198,66 @@ defmodule WolframModel.Analytics do
       {:ok, correlation_length} -> correlation_length
       _ -> 0
     end
+  end
+
+  @doc """
+  Estimates the effective spatial dimension of the hypergraph using geodesic
+  ball growth. Counts vertices within BFS distance r from several seed vertices
+  and fits V(r) ~ r^d via log-log linear regression.
+
+  Returns `1.0` for degenerate (fewer than 4 vertices) or disconnected graphs
+  where a meaningful estimate cannot be produced.
+  """
+  @spec estimate_dimension(Hypergraph.t()) :: float()
+  def estimate_dimension(hg) do
+    adj = build_adjacency_map(hg)
+    vertices = Map.keys(adj)
+    n = length(vertices)
+    if n < 4, do: 1.0, else: do_estimate_dimension(adj, vertices)
+  end
+
+  defp do_estimate_dimension(adj, vertices) do
+    seeds = Enum.take(vertices, min(5, length(vertices)))
+
+    estimates =
+      seeds
+      |> Enum.map(&bfs_distances(adj, &1))
+      |> Enum.map(&estimate_dim_from_distances/1)
+      |> Enum.reject(&is_nil/1)
+
+    if estimates == [], do: 1.0, else: Enum.sum(estimates) / length(estimates)
+  end
+
+  defp estimate_dim_from_distances(distances) do
+    max_r = distances |> Map.values() |> Enum.max(fn -> 0 end)
+    if max_r < 2, do: nil, else: log_log_slope(distances, max_r)
+  end
+
+  defp log_log_slope(distances, max_r) do
+    points =
+      2..max_r
+      |> Enum.map(fn r ->
+        count = Enum.count(distances, fn {_, d} -> d <= r end)
+        if count > 1, do: {:math.log(r), :math.log(count)}, else: nil
+      end)
+      |> Enum.reject(&is_nil/1)
+
+    if length(points) < 2, do: nil, else: linear_regression_slope(points)
+  end
+
+  defp linear_regression_slope(points) do
+    {xs, ys} = Enum.unzip(points)
+    n = length(xs)
+    mean_x = Enum.sum(xs) / n
+    mean_y = Enum.sum(ys) / n
+
+    num =
+      Enum.zip(xs, ys)
+      |> Enum.reduce(0.0, fn {x, y}, acc -> acc + (x - mean_x) * (y - mean_y) end)
+
+    den =
+      Enum.reduce(xs, 0.0, fn x, acc -> acc + (x - mean_x) * (x - mean_x) end)
+
+    if den == 0.0, do: nil, else: num / den
   end
 end

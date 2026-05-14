@@ -15,12 +15,12 @@ Mix.install([
 ```elixir
 defmodule WolframViz do
   @doc """
-  Converts multiway evolution tree to visualization data
+  Converts multiway evolution tree to visualization data.
   """
   def multiway_tree_data(tree, level \\ 0, parent_id \\ nil, position \\ 0) do
     current_id = "node_#{level}_#{position}"
     stats = Hypergraph.stats(tree.model.hypergraph)
-    
+
     current_node = %{
       id: current_id,
       label: "Gen #{tree.model.generation}",
@@ -33,15 +33,15 @@ defmodule WolframViz do
       type: if(level == 0, do: "root", else: "state"),
       size: max(80, stats.vertex_count * 10)
     }
-    
-    parent_edge = if parent_id do
-      [%{source: parent_id, target: current_id, type: "evolution"}]
-    else
-      []
-    end
-    
-    # Process children
-    {child_nodes, child_edges} = 
+
+    parent_edge =
+      if parent_id do
+        [%{source: parent_id, target: current_id, type: "evolution"}]
+      else
+        []
+      end
+
+    {child_nodes, child_edges} =
       tree.children
       |> Enum.with_index()
       |> Enum.reduce({[], []}, fn {child, idx}, {nodes_acc, edges_acc} ->
@@ -49,15 +49,12 @@ defmodule WolframViz do
         {child_nodes, child_edges} = multiway_tree_data(child, level + 1, current_id, child_pos)
         {nodes_acc ++ child_nodes, edges_acc ++ child_edges}
       end)
-    
-    nodes = [current_node | child_nodes]
-    edges = parent_edge ++ child_edges
-    
-    {nodes, edges}
+
+    {[current_node | child_nodes], parent_edge ++ child_edges}
   end
-  
+
   @doc """
-  Creates evolution timeline data
+  Creates evolution timeline data.
   """
   def evolution_timeline_data(model) do
     model.evolution_history
@@ -65,6 +62,7 @@ defmodule WolframViz do
     |> Enum.with_index()
     |> Enum.map(fn {hg, generation} ->
       stats = Hypergraph.stats(hg)
+
       %{
         generation: generation,
         vertices: stats.vertex_count,
@@ -82,7 +80,6 @@ end
 steps = 20
 
 initial = WolframModel.Example.complex_universe()
-
 evolved = WolframModel.evolve_steps(initial, steps)
 
 final_stats = Hypergraph.stats(evolved.hypergraph)
@@ -91,14 +88,139 @@ final_stats = Hypergraph.stats(evolved.hypergraph)
 ## Causal Network
 
 ```elixir
-data = WolframModel.causal_network_data(evolved)
+causal_data = WolframModel.causal_network_data(evolved)
 ```
 
 This shows how evolution events are causally connected through time:
 
 ```elixir
-WolframModel.CausalGraphSVG.to_svg(data)
+WolframModel.CausalGraphSVG.to_svg(causal_data)
 |> Kino.HTML.new()
+```
+
+## Foliations (Spacelike Slices)
+
+Foliations partition causal events into layers where each layer contains only
+events whose parents all belong to earlier layers — the hypergraph analogue of
+constant-time slices in relativity.
+
+```elixir
+layers = WolframModel.foliations(evolved)
+
+foliation_data =
+  layers
+  |> Enum.with_index()
+  |> Enum.flat_map(fn {events, layer} ->
+    Enum.map(events, fn e ->
+      %{layer: layer, event_id: e.id, rule: e.rule.name, parents: length(e.parent_ids)}
+    end)
+  end)
+
+VegaLite.new(width: 600, height: 300, title: "Causal Foliations (Spacelike Layers)")
+|> VegaLite.data_from_values(foliation_data)
+|> VegaLite.mark(:circle, size: 120)
+|> VegaLite.encode_field(:x, "event_id", type: :quantitative, axis: [title: "Event ID"])
+|> VegaLite.encode_field(:y, "layer", type: :quantitative, axis: [title: "Foliation Layer"])
+|> VegaLite.encode_field(:color, "rule", type: :nominal, legend: [title: "Rule"])
+|> VegaLite.encode(:tooltip, [
+  [field: "layer", type: :quantitative, title: "Layer"],
+  [field: "event_id", type: :quantitative, title: "Event ID"],
+  [field: "rule", type: :nominal, title: "Rule"],
+  [field: "parents", type: :quantitative, title: "# Parents"]
+])
+```
+
+## Branchial Graph
+
+The branchial graph connects rule matches that overlap (conflict) at the current
+state — these are the branching points in multiway evolution. Two nodes are
+adjacent when their matched hyperedges share a vertex.
+
+```elixir
+bg = WolframModel.branchial_graph(initial)
+
+IO.puts("Branching matches: #{length(bg.nodes)}")
+IO.puts("Branchial edges:   #{length(bg.edges)}")
+
+bg
+```
+
+## Causal Invariance
+
+Check whether all pairs of non-overlapping rule applications at the initial
+state commute (a necessary condition for relativistic invariance).
+
+```elixir
+WolframModel.causally_invariant?(initial)
+```
+
+## Event Graph Export
+
+Export the full event DAG as nodes + edges for external tooling:
+
+```elixir
+event_graph = WolframModel.export_event_graph(evolved)
+
+IO.puts("Events: #{length(event_graph.nodes)}")
+IO.puts("Causal edges: #{length(event_graph.edges)}")
+
+event_graph
+```
+
+## Effective Spatial Dimension
+
+Estimate the emergent spatial dimension of the evolved hypergraph using
+geodesic ball growth (fits $V(r) \sim r^d$ via log-log regression).
+
+```elixir
+dim = WolframModel.Analytics.estimate_dimension(evolved.hypergraph)
+IO.puts("Estimated spatial dimension: #{Float.round(dim, 3)}")
+```
+
+Track how dimension evolves across generations:
+
+```elixir
+dim_data =
+  evolved.evolution_history
+  |> Enum.reverse()
+  |> Enum.with_index()
+  |> Enum.map(fn {hg, gen} ->
+    %{generation: gen, dimension: WolframModel.Analytics.estimate_dimension(hg)}
+  end)
+
+VegaLite.new(width: 600, height: 300, title: "Emergent Spatial Dimension Over Time")
+|> VegaLite.data_from_values(dim_data)
+|> VegaLite.mark(:line, point: true, strokeWidth: 2)
+|> VegaLite.encode_field(:x, "generation", type: :quantitative, axis: [title: "Generation"])
+|> VegaLite.encode_field(:y, "dimension", type: :quantitative, axis: [title: "Est. Dimension"])
+|> VegaLite.encode(:tooltip, [
+  [field: "generation", type: :quantitative],
+  [field: "dimension", type: :quantitative, format: ".3f"]
+])
+```
+
+## Rule Analysis
+
+Inspect the structural properties of the built-in rule sets:
+
+```elixir
+alias WolframModel.RuleAnalysis
+
+WolframModel.RuleSet.basic_rules()
+|> Enum.map(fn rule ->
+  {pat, rep} = RuleAnalysis.arity(rule)
+
+  %{
+    name: rule.name,
+    reversible: RuleAnalysis.reversible?(rule),
+    self_complementary: RuleAnalysis.self_complementary?(rule),
+    introduces_new_vertices: RuleAnalysis.introduces_new_vertices?(rule),
+    hyperedge_delta: RuleAnalysis.hyperedge_delta(rule),
+    pattern_arities: inspect(pat),
+    replacement_arities: inspect(rep)
+  }
+end)
+|> Kino.DataTable.new()
 ```
 
 ## Multiway Evolution
@@ -117,12 +239,10 @@ This shows all possible evolution paths branching out from the initial state:
 VegaLite.new(width: 600, height: 600, title: "Multiway Evolution Tree")
 |> VegaLite.data_from_values(nodes)
 |> VegaLite.mark(:circle, stroke: "darkblue", strokeWidth: 2)
-|> VegaLite.encode_field(:x, "x", type: :quantitative, 
-    title: "Branching Position")
-|> VegaLite.encode_field(:y, "y", type: :quantitative, 
-    title: "Evolution Depth")
-|> VegaLite.encode_field(:color, "type", type: :nominal, 
-    scale: [domain: ["root", "state"], range: ["gold", "lightblue"]])
+|> VegaLite.encode_field(:x, "x", type: :quantitative, axis: [title: "Branching Position"])
+|> VegaLite.encode_field(:y, "y", type: :quantitative, axis: [title: "Evolution Depth"])
+|> VegaLite.encode_field(:color, "type", type: :nominal,
+  scale: [domain: ["root", "state"], range: ["gold", "lightblue"]])
 |> VegaLite.encode_field(:size, "size", type: :quantitative)
 |> VegaLite.encode(:tooltip, [
   [field: "label", type: :nominal, title: "State"],
@@ -137,15 +257,14 @@ VegaLite.new(width: 600, height: 600, title: "Multiway Evolution Tree")
 This tracks how the universe grows and changes over time:
 
 ```elixir
-data = WolframViz.evolution_timeline_data(evolved)
+timeline_data = WolframViz.evolution_timeline_data(evolved)
 
 VegaLite.new(width: 600, height: 300, title: "Universe Evolution Timeline")
-|> VegaLite.data_from_values(data)
+|> VegaLite.data_from_values(timeline_data)
 |> VegaLite.mark(:line, point: true, strokeWidth: 3)
-|> VegaLite.encode_field(:x, "generation", type: :quantitative, 
-    axis: [title: "Generation"])
-|> VegaLite.encode_field(:y, "vertices", type: :quantitative, 
-    axis: [title: "Count"], scale: [zero: true])
+|> VegaLite.encode_field(:x, "generation", type: :quantitative, axis: [title: "Generation"])
+|> VegaLite.encode_field(:y, "vertices", type: :quantitative,
+  axis: [title: "Count"], scale: [zero: true])
 |> VegaLite.encode(:tooltip, [
   [field: "generation", type: :quantitative],
   [field: "vertices", type: :quantitative],
@@ -159,9 +278,8 @@ VegaLite.new(width: 600, height: 300, title: "Universe Evolution Timeline")
 Compare how different measures of complexity evolve:
 
 ```elixir
-# Transform data for multiple series
-series_data = 
-  data
+series_data =
+  timeline_data
   |> Enum.flat_map(fn point ->
     [
       %{generation: point.generation, value: point.vertices, measure: "Vertices"},
@@ -173,15 +291,14 @@ series_data =
 VegaLite.new(width: 600, height: 350, title: "Complexity Measures Over Time")
 |> VegaLite.data_from_values(series_data)
 |> VegaLite.mark(:line, point: true, strokeWidth: 2)
-|> VegaLite.encode_field(:x, "generation", type: :quantitative, 
-    axis: [title: "Generation"])
-|> VegaLite.encode_field(:y, "value", type: :quantitative, 
-    axis: [title: "Count"])
-|> VegaLite.encode_field(:color, "measure", type: :nominal, 
-    scale: [scheme: "category10"], legend: [title: "Measure"])
+|> VegaLite.encode_field(:x, "generation", type: :quantitative, axis: [title: "Generation"])
+|> VegaLite.encode_field(:y, "value", type: :quantitative, axis: [title: "Count"])
+|> VegaLite.encode_field(:color, "measure", type: :nominal,
+  scale: [scheme: "category10"], legend: [title: "Measure"])
 |> VegaLite.encode(:tooltip, [
   [field: "measure", type: :nominal],
   [field: "generation", type: :quantitative],
   [field: "value", type: :quantitative]
 ])
 ```
+
