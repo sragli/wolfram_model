@@ -13,17 +13,19 @@ Mix.install([
 ## Universe
 
 ```elixir
-steps = 20
+steps = 30
 
 initial =
   Hypergraph.new()
-  |> Hypergraph.add_hyperedge([1, 2, 3])
+  |> Hypergraph.add_hyperedge([1, 2])
+  |> Hypergraph.add_hyperedge([2, 3])
   |> Hypergraph.add_hyperedge([3, 4])
-  |> Hypergraph.add_hyperedge([4, 7, 9])
-  |> Hypergraph.add_hyperedge([1, 5])
-  |> Hypergraph.add_hyperedge([1, 6, 9, 2])
-  |> Hypergraph.add_hyperedge([1, 5, 8])
-  |> WolframModel.new(WolframModel.RuleSet.rule_set(:spacetime))
+  |> Hypergraph.add_hyperedge([4, 5])
+  |> Hypergraph.add_hyperedge([5, 6])
+  |> Hypergraph.add_hyperedge([6, 7])
+  |> Hypergraph.add_hyperedge([7, 8])
+  |> Hypergraph.add_hyperedge([8, 9])
+  |> WolframModel.new(WolframModel.RuleSet.rule_set(:growth))
 
 evolved = WolframModel.evolve_steps(initial, steps)
 
