@@ -21,8 +21,21 @@ defmodule WolframModel.CausalGraphSVG do
         {x1, y1} = positions[a]
         {x2, y2} = positions[b]
 
+        # Retract the endpoint to the circle's edge so the arrowhead
+        # is not hidden beneath the target node.
+        dx = x2 - x1
+        dy = y2 - y1
+        len = :math.sqrt(dx * dx + dy * dy)
+
+        {x2e, y2e} =
+          if len > 0 do
+            {x2 - dx / len * @node_radius, y2 - dy / len * @node_radius}
+          else
+            {x2, y2}
+          end
+
         """
-        <line x1="#{x1}" y1="#{y1}" x2="#{x2}" y2="#{y2}"
+        <line x1="#{x1}" y1="#{y1}" x2="#{x2e}" y2="#{y2e}"
               stroke="black" stroke-width="1.5"
               marker-end="url(#arrow)"/>
         """

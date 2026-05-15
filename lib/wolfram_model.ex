@@ -601,14 +601,20 @@ defmodule WolframModel do
         branch1 = apply_rule(model, r1, m1) |> evolve_steps(depth)
         branch2 = apply_rule(model, r2, m2) |> evolve_steps(depth)
 
-        reachable_states(branch1, depth)
-        |> Enum.any?(fn s1 ->
+        # Pre-compute and normalize both reachable sets once, then check
+        # intersection via MapSet — avoids recomputing branch2 states O(|S1|)
+        # times and turns the inner search from O(|S1|×|S2|) to O(|S1|+|S2|).
+        norm1 =
+          reachable_states(branch1, depth)
+          |> Enum.map(fn s -> normalize_for_confluence(s.hypergraph) end)
+          |> MapSet.new()
+
+        norm2 =
           reachable_states(branch2, depth)
-          |> Enum.any?(fn s2 ->
-            normalize_for_confluence(s1.hypergraph) ==
-              normalize_for_confluence(s2.hypergraph)
-          end)
-        end)
+          |> Enum.map(fn s -> normalize_for_confluence(s.hypergraph) end)
+          |> MapSet.new()
+
+        not MapSet.disjoint?(norm1, norm2)
       else
         # Non-overlapping: must commute immediately.
         s12 = model |> apply_rule(r1, m1) |> apply_rule(r2, m2)
