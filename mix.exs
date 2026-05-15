@@ -4,7 +4,7 @@ defmodule WolframModel.MixProject do
   def project do
     [
       app: :wolfram_model,
-      version: "0.3.0",
+      version: "1.0.0",
       elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
       description: description(),
@@ -23,7 +23,7 @@ defmodule WolframModel.MixProject do
   end
 
   defp description() do
-    "Elixir module that implements a simplified version of the Wolfram Model, including evolution rules, causal networks, and multiway evolution."
+    "Elixir implementation of the Wolfram Model: hypergraph rewriting, N-pattern matching, causal networks, multiway DAG evolution, and emergent structure analysis."
   end
 
   defp package() do

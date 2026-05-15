@@ -115,4 +115,66 @@ defmodule WolframModel.RuleSet do
       }
     ]
   end
+
+  @doc """
+  Classic benchmark rules from the Wolfram Physics Project.
+
+  All rules use the canonical integer variable notation and are expressed
+  as N-pattern rules (requiring the general N-pattern matcher).
+
+  Available rule sets:
+  - `:rule_1` — binary split: `{{1,2},{1,3}} -> {{2,3},{1,4}}`
+  - `:rule_2` — triangle rewrite: `{{1,2},{1,3},{2,3}} -> {{1,4},{2,4},{3,4},{1,2,3}}`
+  - `:rule_3` — three-edge rewrite: `{{1,2},{3,4},{2,3}} -> {{1,2},{2,3},{3,4},{4,1}}`
+  - `:rule_4` — growth rule (spatial): `{{1,2,3},{1,4,5}} -> {{1,2,3},{1,4,5},{2,4,6}}`
+  - `:rule_5` — self-referential: `{{1,1},{1,2}} -> {{1,2},{1,3},{2,3}}`
+  """
+  @spec rule_set(:wolfram, atom()) :: [rule()]
+  def rule_set(:wolfram, key) do
+    Map.fetch!(wolfram_rules(), key)
+  end
+
+  @doc """
+  Returns the full map of named Wolfram benchmark rules.
+  """
+  @spec wolfram_rules() :: %{atom() => [rule()]}
+  def wolfram_rules do
+    %{
+      rule_1: [
+        %{
+          name: "wolfram_rule_1",
+          pattern: [[1, 2], [1, 3]],
+          replacement: [[2, 3], [1, 4]]
+        }
+      ],
+      rule_2: [
+        %{
+          name: "wolfram_rule_2",
+          pattern: [[1, 2], [1, 3], [2, 3]],
+          replacement: [[1, 4], [2, 4], [3, 4], [1, 2, 3]]
+        }
+      ],
+      rule_3: [
+        %{
+          name: "wolfram_rule_3",
+          pattern: [[1, 2], [3, 4], [2, 3]],
+          replacement: [[1, 2], [2, 3], [3, 4], [4, 1]]
+        }
+      ],
+      rule_4: [
+        %{
+          name: "wolfram_rule_4",
+          pattern: [[1, 2, 3], [1, 4, 5]],
+          replacement: [[1, 2, 3], [1, 4, 5], [2, 4, 6]]
+        }
+      ],
+      rule_5: [
+        %{
+          name: "wolfram_rule_5",
+          pattern: [[1, 1], [1, 2]],
+          replacement: [[1, 2], [1, 3], [2, 3]]
+        }
+      ]
+    }
+  end
 end

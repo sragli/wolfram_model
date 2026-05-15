@@ -69,6 +69,54 @@ defmodule WolframModel.RuleAnalysis do
     {pattern_sizes(rule), replacement_sizes(rule)}
   end
 
+  @doc """
+  Returns a canonical form of a rule with variables renamed in first-appearance
+  order (depth-first, pattern first then replacement).
+
+  Two rules are structurally equivalent if and only if their canonical forms
+  are equal. Variables that appear only in the replacement (new-vertex generators)
+  are canonicalized separately after all shared variables.
+
+      iex> r1 = %{pattern: [[1,2],[2,3]], replacement: [[1,3]], name: "a"}
+      iex> r2 = %{pattern: [[10,20],[20,30]], replacement: [[10,30]], name: "b"}
+      iex> WolframModel.RuleAnalysis.canonical_form(r1) == WolframModel.RuleAnalysis.canonical_form(r2)
+      true
+  """
+  @spec canonical_form(rule()) :: %{pattern: [[term()]], replacement: [[term()]]}
+  def canonical_form(rule) do
+    # Assign canonical integer labels in strict first-appearance order
+    # walking pattern hyperedges first, then replacement hyperedges.
+    all_vars =
+      (List.flatten(rule.pattern) ++ List.flatten(rule.replacement))
+      |> Enum.uniq()
+
+    mapping =
+      all_vars
+      |> Enum.with_index(1)
+      |> Map.new()
+
+    relabel = fn he -> Enum.map(he, &Map.fetch!(mapping, &1)) end
+
+    %{
+      pattern: Enum.map(rule.pattern, relabel),
+      replacement: Enum.map(rule.replacement, relabel)
+    }
+  end
+
+  @doc """
+  Returns `true` if `rule1` and `rule2` are structurally equivalent — i.e.
+  they represent the same rewriting rule up to a bijective renaming of
+  variables.
+
+  Note: this checks *syntactic* isomorphism based on first-appearance variable
+  order. It does not test semantic equivalence under all possible hypergraph
+  evolutions.
+  """
+  @spec equivalent?(rule(), rule()) :: boolean()
+  def equivalent?(rule1, rule2) do
+    canonical_form(rule1) == canonical_form(rule2)
+  end
+
   # --- private helpers ---
 
   defp pattern_sizes(rule),

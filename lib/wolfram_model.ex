@@ -91,24 +91,111 @@ defmodule WolframModel do
   end
 
   @doc """
-  Evolves the universe by one step, applying the first applicable rule.
+  Evolves the universe by one step, applying one rule match selected by
+  `opts[:ordering]`.
 
-  Accepts `opts` where you can pass `:id_generator` to override the model's
-  id generator for deterministic behavior during tests or specific runs.
+  Supported orderings:
+  - `:first` (default) — first match in rule/hyperedge order
+  - `:leftmost` — match whose hyperedges have the smallest vertex sort key
+  - `:random` — uniformly random match
+
+  Accepts `opts[:id_generator]` to override the model's id generator for
+  deterministic behaviour during tests.
+
+  Returns the unchanged model when no rules are applicable (fixpoint).
   """
   @spec evolve_step(t(), keyword()) :: t()
   def evolve_step(model, opts \\ []) do
     id_gen = Keyword.get(opts, :id_generator)
+    ordering = Keyword.get(opts, :ordering, :first)
     model = if id_gen, do: %{model | id_generator: id_gen}, else: model
 
-    case find_all_matches(model) |> List.first() do
-      nil ->
-        # No rules applicable
-        model
+    matches = find_all_matches(model)
 
-      {rule, match_data} ->
-        apply_rule(model, rule, match_data)
+    selected =
+      case ordering do
+        :first -> List.first(matches)
+        :leftmost -> select_leftmost(matches)
+        :random -> if matches == [], do: nil, else: Enum.random(matches)
+      end
+
+    case selected do
+      nil -> model
+      {rule, match_data} -> apply_rule(model, rule, match_data)
     end
+  end
+
+  @doc """
+  Returns `true` when no rule can be applied to the current hypergraph
+  (the system has reached a fixpoint).
+  """
+  @spec fixpoint?(t()) :: boolean()
+  def fixpoint?(model), do: find_all_matches(model) == []
+
+  @doc """
+  Evolves the universe by repeatedly calling `evolve_step/2` until either
+  no rule is applicable or `max_steps` is reached.
+
+  Returns the final model. You can check `fixpoint?/1` on the result to
+  distinguish a natural fixpoint from a step-limit halt.
+  """
+  @spec evolve_until_fixpoint(t(), non_neg_integer(), keyword()) :: t()
+  def evolve_until_fixpoint(model, max_steps \\ 1_000, opts \\ [])
+  def evolve_until_fixpoint(model, 0, _opts), do: model
+
+  def evolve_until_fixpoint(model, remaining, opts) do
+    if fixpoint?(model) do
+      model
+    else
+      model |> evolve_step(opts) |> evolve_until_fixpoint(remaining - 1, opts)
+    end
+  end
+
+  @doc """
+  Applies all non-conflicting rule matches in parallel during a single step.
+
+  Matches are processed greedily in rule/hyperedge order: once a hyperedge is
+  consumed by a chosen match it is unavailable to subsequent matches in the
+  same step. Returns the unchanged model when no matches exist.
+  """
+  @spec evolve_parallel(t()) :: t()
+  def evolve_parallel(model) do
+    selected = find_all_matches(model) |> select_non_conflicting()
+
+    Enum.reduce(selected, model, fn {rule, match_data}, m ->
+      apply_rule(m, rule, match_data)
+    end)
+  end
+
+  defp select_leftmost([]), do: nil
+
+  defp select_leftmost(matches) do
+    Enum.min_by(matches, fn {_rule, match_data} ->
+      match_data.matched_hyperedges
+      |> List.flatten()
+      |> Enum.map(&vertex_sort_key/1)
+      |> Enum.sort()
+    end)
+  end
+
+  defp vertex_sort_key(v) when is_integer(v), do: {0, v, 0, 0}
+  defp vertex_sort_key(v) when is_atom(v), do: {1, Atom.to_string(v), 0, 0}
+  defp vertex_sort_key({a, g, id}) when is_atom(a), do: {2, Atom.to_string(a), g, id}
+  defp vertex_sort_key(_), do: {3, "", 0, 0}
+
+  defp select_non_conflicting(matches) do
+    {selected, _used} =
+      Enum.reduce(matches, {[], MapSet.new()}, fn {rule, match_data}, {sel, used} ->
+        edges = MapSet.new(match_data.matched_hyperedges)
+
+        if MapSet.disjoint?(edges, used) do
+          {[{rule, match_data} | sel], MapSet.union(edges, used)}
+        else
+          {sel, used}
+        end
+      end)
+
+    Enum.reverse(selected)
   end
 
   @doc """
@@ -167,6 +254,49 @@ defmodule WolframModel do
     %{model: model, children: children}
   end
 
+  @doc """
+  Explores the multiway system as a directed acyclic graph (DAG) up to
+  `depth` steps. Unlike `multiway_explore/2`, states that are reachable via
+  multiple paths are represented once and converging branches share nodes.
+
+  Returns:
+  ```
+  %{
+    root: canonical_key,
+    nodes: %{canonical_key => %WolframModel{}},
+    edges: MapSet.t({from_key, to_key})
+  }
+  ```
+  where `canonical_key` is a sorted list-of-lists encoding of the hypergraph.
+  """
+  @spec multiway_explore_dag(t(), non_neg_integer()) ::
+          %{root: term(), nodes: map(), edges: MapSet.t()}
+  def multiway_explore_dag(model, depth) do
+    root_key = canonical_hypergraph(model.hypergraph)
+    acc = %{root: root_key, nodes: %{root_key => model}, edges: MapSet.new()}
+    do_explore_dag(model, root_key, depth, acc)
+  end
+
+  defp do_explore_dag(_model, _key, 0, acc), do: acc
+
+  defp do_explore_dag(model, parent_key, depth, acc) do
+    model
+    |> multiway_step()
+    |> Enum.reduce(acc, fn child, a ->
+      child_key = canonical_hypergraph(child.hypergraph)
+      new_nodes = Map.put_new(a.nodes, child_key, child)
+      new_edges = MapSet.put(a.edges, {parent_key, child_key})
+      new_acc = %{a | nodes: new_nodes, edges: new_edges}
+
+      # Only recurse into nodes we haven't visited yet to avoid cycles.
+      if Map.has_key?(a.nodes, child_key) do
+        new_acc
+      else
+        do_explore_dag(child, child_key, depth - 1, new_acc)
+      end
+    end)
+  end
+
   defp find_all_matches(model) do
     model.rules
     |> Enum.flat_map(fn rule ->
@@ -185,35 +315,31 @@ defmodule WolframModel do
         Hypergraph.remove_hyperedge(hg, he)
       end)
 
-    # Add replacement hyperedges with proper vertex substitution
-    new_hg =
+    # Compute all added hyperedges with a single substitution pass so that
+    # each fresh-vertex tag produces exactly one new ID shared between the
+    # hypergraph update and the event record.
+    # We accumulate a per-tag memoization map so that the same unbound atom
+    # appearing in multiple replacement hyperedges always generates the same
+    # new vertex within a single rule application.
+    removed_hyperedges = match_data.matched_hyperedges
+
+    {added_hyperedges, _memo} =
       rule.replacement
-      |> Enum.reduce(new_hg, fn replacement_he, hg ->
-        actual_vertices =
-          substitute_vertices(
-            replacement_he,
-            match_data.mapping,
-            model.generation,
-            model.id_generator
-          )
-
-        # Hypergraph.add_hyperedge accepts a vertex list
-        Hypergraph.add_hyperedge(hg, actual_vertices)
-      end)
-
-    # Determine removed and added hyperedges
-    removed_hyperedges = match_data.matched_hyperedges |> Enum.map(& &1)
-
-    # collect added hyperedges from the replacements
-    added_hyperedges =
-      rule.replacement
-      |> Enum.map(fn replacement_he ->
-        substitute_vertices(
+      |> Enum.map_reduce(%{}, fn replacement_he, memo ->
+        substitute_vertices_memo(
           replacement_he,
           match_data.mapping,
           model.generation,
-          model.id_generator
+          model.id_generator,
+          memo
         )
+      end)
+
+    # Apply removals then additions to the hypergraph.
+    new_hg =
+      added_hyperedges
+      |> Enum.reduce(new_hg, fn actual_vertices, hg ->
+        Hypergraph.add_hyperedge(hg, actual_vertices)
       end)
 
     # affected vertices (deduplicated)
@@ -264,34 +390,42 @@ defmodule WolframModel do
   end
 
   # Substitutes vertices in a replacement hyperedge using the pattern mapping.
-  # Any atom present in the mapping is replaced with its mapped value.
-  # Any atom NOT in the mapping is treated as a fresh-vertex tag and produces a
-  # new unique vertex tuple {atom, generation, id}. This handles any rule
-  # generically without a hardcoded list of "new vertex" atoms.
-  # Two-element {atom, integer} tuples are treated as spacetime coordinates and
-  # kept verbatim (they appear as literals in spacetime rules).
-  defp substitute_vertices(replacement_he, mapping, generation, id_generator) do
-    replacement_he
-    |> Enum.map(fn vertex ->
-      case Map.fetch(mapping, vertex) do
-        {:ok, mapped} ->
-          mapped
+  # Atoms present in the mapping are replaced with their bound vertices.
+  # Atoms NOT in the mapping are treated as new-vertex tags and produce a unique
+  # vertex tuple {atom, generation, id}. Two-element {atom, integer} tuples are
+  # kept verbatim as spacetime coordinate literals.
+  #
+  # `memo` maps unbound atom tags to the fresh vertex already created for them
+  # within the current rule application, so each distinct tag gets one stable ID.
+  defp substitute_vertices_memo(replacement_he, mapping, generation, id_gen, memo) do
+    {vertices, new_memo} =
+      Enum.map_reduce(replacement_he, memo, fn vertex, m ->
+        case Map.fetch(mapping, vertex) do
+          {:ok, mapped} ->
+            {mapped, m}
 
-        :error ->
-          case vertex do
-            {tag, offset} when is_atom(tag) and is_integer(offset) ->
-              # Spacetime coordinate literal — keep as-is
-              {tag, offset}
+          :error ->
+            case vertex do
+              {tag, offset} when is_atom(tag) and is_integer(offset) ->
+                {{tag, offset}, m}
 
-            atom when is_atom(atom) ->
-              # Unbound atom in replacement = new vertex generator
-              {atom, generation, id_generator.()}
+              atom when is_atom(atom) ->
+                case Map.fetch(m, atom) do
+                  {:ok, existing} ->
+                    {existing, m}
 
-            other ->
-              other
-          end
-      end
-    end)
+                  :error ->
+                    fresh = {atom, generation, id_gen.()}
+                    {fresh, Map.put(m, atom, fresh)}
+                end
+
+              other ->
+                {other, m}
+            end
+        end
+      end)
+
+    {vertices, new_memo}
   end
 
   @doc """
@@ -432,32 +566,67 @@ defmodule WolframModel do
   end
 
   @doc """
-  Checks approximate causal invariance (confluence) for the current model state.
+  Checks causal invariance (confluence) for the current model state.
 
-  Tests all pairs of non-overlapping rule matches: applies them in both orders
-  and verifies that the resulting hypergraphs are structurally equivalent (same
-  normalized canonical form after replacing fresh-vertex IDs with stable tokens).
+  Tests all pairs of rule matches — both overlapping and non-overlapping:
 
-  Returns `true` if all tested pairs commute, `false` otherwise.
-  An empty match set (no applicable rules) is trivially invariant.
+  - *Non-overlapping pairs*: applied in both orders; the results must be
+    identical (immediate commutativity).
+  - *Overlapping pairs*: each match is applied independently; then evolution
+    continues for up to `depth` additional steps (default 2) on each branch.
+    Invariance holds if the two branches reach a common state within that
+    depth (local Church-Rosser property).
+
+  Returns `true` if all tested pairs satisfy the check, `false` otherwise.
+  An empty match set is trivially invariant.
   """
-  @spec causally_invariant?(t()) :: boolean()
-  def causally_invariant?(model) do
+  @spec causally_invariant?(t(), non_neg_integer()) :: boolean()
+  def causally_invariant?(model, depth \\ 2) do
     indexed = find_all_matches(model) |> Enum.with_index()
 
     pairs =
       for {{r1, m1}, i} <- indexed,
           {{r2, m2}, j} <- indexed,
-          i < j,
-          m1.matched_hyperedges -- m1.matched_hyperedges -- m2.matched_hyperedges == [] do
+          i < j do
         {r1, m1, r2, m2}
       end
 
     Enum.all?(pairs, fn {r1, m1, r2, m2} ->
-      s12 = model |> apply_rule(r1, m1) |> apply_rule(r2, m2)
-      s21 = model |> apply_rule(r2, m2) |> apply_rule(r1, m1)
-      normalize_for_confluence(s12.hypergraph) == normalize_for_confluence(s21.hypergraph)
+      overlapping? =
+        m1.matched_hyperedges -- m1.matched_hyperedges -- m2.matched_hyperedges != []
+
+      if overlapping? do
+        # Overlapping: check local Church-Rosser — after applying one, can we
+        # still reach the same final state as after applying the other?
+        branch1 = apply_rule(model, r1, m1) |> evolve_steps(depth)
+        branch2 = apply_rule(model, r2, m2) |> evolve_steps(depth)
+
+        reachable_states(branch1, depth)
+        |> Enum.any?(fn s1 ->
+          reachable_states(branch2, depth)
+          |> Enum.any?(fn s2 ->
+            normalize_for_confluence(s1.hypergraph) ==
+              normalize_for_confluence(s2.hypergraph)
+          end)
+        end)
+      else
+        # Non-overlapping: must commute immediately.
+        s12 = model |> apply_rule(r1, m1) |> apply_rule(r2, m2)
+        s21 = model |> apply_rule(r2, m2) |> apply_rule(r1, m1)
+        normalize_for_confluence(s12.hypergraph) == normalize_for_confluence(s21.hypergraph)
+      end
     end)
+  end
+
+  # Collect all states reachable from `model` in up to `steps` single-step
+  # multiway expansions (breadth-first), including `model` itself.
+  defp reachable_states(model, 0), do: [model]
+
+  defp reachable_states(model, steps) do
+    nexts = multiway_step(model)
+
+    [model | nexts |> Enum.flat_map(&reachable_states(&1, steps - 1))]
+    |> Enum.uniq_by(fn m -> canonical_hypergraph(m.hypergraph) end)
   end
 
   # Normalize a hypergraph for confluence comparison by replacing all fresh

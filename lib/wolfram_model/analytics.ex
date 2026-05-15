@@ -220,22 +220,47 @@ defmodule WolframModel.Analytics do
   """
   @spec estimate_dimension(Hypergraph.t()) :: float()
   def estimate_dimension(hg) do
-    adj = build_adjacency_map(hg)
-    vertices = Map.keys(adj)
+    vertices = hg |> Hypergraph.hyperedges() |> Enum.flat_map(& &1) |> Enum.uniq()
     n = length(vertices)
-    if n < 4, do: 1.0, else: do_estimate_dimension(adj, vertices)
+    if n < 4, do: 1.0, else: do_estimate_dimension(hg, vertices)
   end
 
-  defp do_estimate_dimension(adj, vertices) do
-    seeds = Enum.take(vertices, min(5, length(vertices)))
+  defp do_estimate_dimension(hg, vertices) do
+    # Use more seeds for a better estimate (up to 10).
+    seeds = Enum.take(vertices, min(10, length(vertices)))
 
     estimates =
       seeds
-      |> Enum.map(&bfs_distances(adj, &1))
+      |> Enum.map(&hypergraph_bfs_distances(hg, &1))
       |> Enum.map(&estimate_dim_from_distances/1)
       |> Enum.reject(&is_nil/1)
 
     if estimates == [], do: 1.0, else: Enum.sum(estimates) / length(estimates)
+  end
+
+  # Geodesic BFS on the *hypergraph* (not the projected binary graph).
+  # At each step we move through entire hyperedges: from a vertex we reach all
+  # other vertices in any hyperedge that contains it, in one hop.
+  defp hypergraph_bfs_distances(hg, source) do
+    hyperedges = Hypergraph.hyperedges(hg)
+    do_hg_bfs(hyperedges, [{source, 0}], %{source => 0})
+  end
+
+  defp do_hg_bfs(_hyperedges, [], visited), do: visited
+
+  defp do_hg_bfs(hyperedges, [{vertex, dist} | queue], visited) do
+    new_neighbors =
+      hyperedges
+      |> Enum.filter(fn he -> vertex in he end)
+      |> Enum.flat_map(& &1)
+      |> Enum.reject(&Map.has_key?(visited, &1))
+      |> Enum.uniq()
+
+    new_visited =
+      Enum.reduce(new_neighbors, visited, fn v, acc -> Map.put(acc, v, dist + 1) end)
+
+    new_queue = queue ++ Enum.map(new_neighbors, &{&1, dist + 1})
+    do_hg_bfs(hyperedges, new_queue, new_visited)
   end
 
   defp estimate_dim_from_distances(distances) do
@@ -269,5 +294,71 @@ defmodule WolframModel.Analytics do
       Enum.reduce(xs, 0.0, fn x, acc -> acc + (x - mean_x) * (x - mean_x) end)
 
     if den == 0.0, do: nil, else: num / den
+  end
+
+  @doc """
+  Detects conserved quantities by scanning the full evolution history.
+
+  Checks the following candidates across all recorded hypergraph snapshots:
+  - `:vertex_count` — total distinct vertex count is constant
+  - `:edge_count` — total hyperedge count is constant
+  - `:vertex_count_parity` — vertex count parity (mod 2) is constant
+  - `:edge_count_parity` — edge count parity (mod 2) is constant
+  - `:total_degree` — sum of all hyperedge sizes (total degree) is constant
+  - `:total_degree_parity` — total degree parity is constant
+
+  Returns:
+  ```
+  %{
+    conserved: [:vertex_count, ...],
+    vertex_count_history: [n, ...],
+    edge_count_history: [n, ...],
+    total_degree_history: [n, ...]
+  }
+  ```
+
+  Requires at least 2 snapshots; returns `%{conserved: []}` otherwise.
+  """
+  @spec detect_conserved_quantities(WolframModel.t()) :: map()
+  def detect_conserved_quantities(%WolframModel{evolution_history: history})
+      when length(history) < 2 do
+    %{conserved: [], vertex_count_history: [], edge_count_history: [], total_degree_history: []}
+  end
+
+  def detect_conserved_quantities(model) do
+    snapshots = Enum.reverse(model.evolution_history)
+
+    vertex_counts =
+      Enum.map(snapshots, fn hg ->
+        hg |> Hypergraph.hyperedges() |> Enum.flat_map(& &1) |> Enum.uniq() |> length()
+      end)
+
+    edge_counts =
+      Enum.map(snapshots, fn hg -> hg |> Hypergraph.hyperedges() |> length() end)
+
+    total_degrees =
+      Enum.map(snapshots, fn hg ->
+        hg |> Hypergraph.hyperedges() |> Enum.map(&length/1) |> Enum.sum()
+      end)
+
+    conserved =
+      []
+      |> maybe_conserved(:vertex_count, vertex_counts)
+      |> maybe_conserved(:edge_count, edge_counts)
+      |> maybe_conserved(:vertex_count_parity, Enum.map(vertex_counts, &rem(&1, 2)))
+      |> maybe_conserved(:edge_count_parity, Enum.map(edge_counts, &rem(&1, 2)))
+      |> maybe_conserved(:total_degree, total_degrees)
+      |> maybe_conserved(:total_degree_parity, Enum.map(total_degrees, &rem(&1, 2)))
+
+    %{
+      conserved: conserved,
+      vertex_count_history: vertex_counts,
+      edge_count_history: edge_counts,
+      total_degree_history: total_degrees
+    }
+  end
+
+  defp maybe_conserved(acc, label, values) do
+    if Enum.uniq(values) |> length() == 1, do: [label | acc], else: acc
   end
 end
