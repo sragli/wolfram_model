@@ -7,10 +7,9 @@ defmodule WolframModel.PropertyTest do
   alias WolframModel.Analytics
   alias WolframModel.Matcher
 
-  # Small hyperedge generator: non-empty set of small integers
+  # Small hyperedge generator: non-empty list of small integers (ordered)
   defp hyperedge_gen() do
     StreamData.uniq_list_of(StreamData.integer(1..20), min_length: 2, max_length: 4)
-    |> StreamData.map(&MapSet.new/1)
   end
 
   defp hyperedges_list_gen(),
@@ -20,11 +19,10 @@ defmodule WolframModel.PropertyTest do
     check all(hyperedges <- hyperedges_list_gen(), max_runs: 50) do
       # pick a hyperedge that will be matched
       he = Enum.random(hyperedges)
-      size = MapSet.size(he)
+      size = length(he)
 
       # build a pattern with placeholder atoms :a, :b, ...
-      placeholders = Enum.take([:a, :b, :c, :d, :e], size)
-      pattern = MapSet.new(placeholders)
+      pattern = Enum.take([:a, :b, :c, :d, :e], size)
 
       # run match
       res = Matcher.match(hyperedges, [pattern])
@@ -32,7 +30,7 @@ defmodule WolframModel.PropertyTest do
       # If there's a match, verify mapping maps placeholders to some hyperedge in the input list
       Enum.each(res, fn %{mapping: mapping} ->
         mapped_values = Map.values(mapping) |> MapSet.new()
-        assert Enum.any?(hyperedges, fn h -> MapSet.equal?(mapped_values, h) end)
+        assert Enum.any?(hyperedges, fn h -> MapSet.equal?(mapped_values, MapSet.new(h)) end)
       end)
     end
   end
@@ -47,11 +45,13 @@ defmodule WolframModel.PropertyTest do
       adj = Analytics.build_adjacency_map(hg)
 
       # Each vertex present and neighbor sets only include vertices from hg
-      Enum.each(Hypergraph.vertices(hg), fn v ->
+      vertices = hg |> Hypergraph.hyperedges() |> Enum.flat_map(& &1) |> MapSet.new()
+
+      Enum.each(vertices, fn v ->
         assert Map.has_key?(adj, v)
 
         Enum.each(MapSet.to_list(Map.get(adj, v)), fn nbr ->
-          assert MapSet.member?(Hypergraph.vertices(hg), nbr)
+          assert MapSet.member?(vertices, nbr)
           # symmetry
           assert MapSet.member?(Map.get(adj, nbr, MapSet.new()), v)
         end)
@@ -70,13 +70,13 @@ defmodule WolframModel.PropertyTest do
       he = Enum.random(hyperedges)
 
       # pattern placeholders sized like he
-      size = MapSet.size(he)
+      size = length(he)
       placeholders = Enum.take([:a, :b, :c, :d, :e], size)
-      pattern = MapSet.new(placeholders)
+      pattern = placeholders
 
       rule = %{
         pattern: [pattern],
-        replacement: [MapSet.new([List.first(placeholders), :new])],
+        replacement: [[List.first(placeholders), :new]],
         name: "add_new"
       }
 
@@ -86,9 +86,12 @@ defmodule WolframModel.PropertyTest do
       # If evolution happened, the new hypergraph should contain a tuple vertex starting with :new
       if new_model.generation > 0 do
         found_new =
-          Enum.any?(Hypergraph.vertices(new_model.hypergraph), fn v ->
-            is_tuple(v) and elem(v, 0) in [:new, :center, :parallel, :new1, :new2, :new3]
-          end)
+          Enum.any?(
+            new_model.hypergraph |> Hypergraph.hyperedges() |> Enum.flat_map(& &1),
+            fn v ->
+              is_tuple(v) and elem(v, 0) in [:new, :center, :parallel, :new1, :new2, :new3]
+            end
+          )
 
         assert found_new
       end
@@ -97,66 +100,44 @@ defmodule WolframModel.PropertyTest do
 
   test "Matcher.match for two-hyperedge patterns produces consistent mappings" do
     check all(
-            a <- StreamData.uniq_list_of(StreamData.integer(1..30), min_length: 1, max_length: 3),
-            b <- StreamData.uniq_list_of(StreamData.integer(1..30), min_length: 1, max_length: 3),
+            he1 <- hyperedge_gen(),
+            he2 <- hyperedge_gen(),
             max_runs: 80
           ) do
-      he1 = MapSet.new(a)
-      he2 = MapSet.new(b)
-      shared = MapSet.intersection(he1, he2)
+      # Skip if hyperedges don't share a vertex (matcher requires connectivity)
+      shared_vertices = he1 -- he1 -- he2
 
-      # If there's no shared vertex, skip this run
-      if MapSet.size(shared) == 0 do
+      if shared_vertices == [] do
         true
       else
-        # Construct a small hyperedge list containing he1 and he2 and some extras
-        extras =
-          1..Enum.random(0..2)
-          |> Enum.map(fn _ -> MapSet.new([Enum.random(1..30), Enum.random(1..30)]) end)
-
-        hyperedges = [he1, he2 | extras]
-
         atoms = [:a, :b, :c, :d, :e, :f]
-        s_count = MapSet.size(shared)
-        shared_placeholders = Enum.take(atoms, s_count)
+        p1 = Enum.take(atoms, length(he1))
+        p2 = Enum.take(Enum.drop(atoms, length(he1)), length(he2))
+        # Make p2 share the first variable with p1 via a shared placeholder
+        p2 = [List.first(p1) | Enum.drop(p2, 1)]
 
-        p1_size = MapSet.size(he1)
-        p2_size = MapSet.size(he2)
+        # he2 must start with the shared vertex for the mapping to be consistent
+        shared_v = List.first(shared_vertices)
+        he2_adj = [shared_v | Enum.reject(he2, &(&1 == shared_v))]
 
-        p1_placeholders =
-          shared_placeholders ++ Enum.take(Enum.drop(atoms, s_count), p1_size - s_count)
-
-        p2_placeholders =
-          shared_placeholders ++
-            Enum.take(Enum.drop(atoms, s_count + (p1_size - s_count)), p2_size - s_count)
-
-        p1 = MapSet.new(p1_placeholders)
-        p2 = MapSet.new(p2_placeholders)
+        hyperedges = [he1, he2_adj]
 
         res = Matcher.match(hyperedges, [p1, p2])
 
         Enum.each(res, fn %{mapping: mapping, matched_hyperedges: [m1, m2]} ->
-          # matched hyperedges should be taken from the supplied hyperedges list
-          assert Enum.any?(hyperedges, fn h -> MapSet.equal?(h, m1) end)
-          assert Enum.any?(hyperedges, fn h -> MapSet.equal?(h, m2) end)
+          # matched hyperedges should be from the supplied list
+          assert m1 in hyperedges
+          assert m2 in hyperedges
 
-          # mapping values for p1 placeholders correspond exactly to m1
-          keys1 = MapSet.to_list(p1)
-          Enum.each(keys1, fn k -> assert Map.has_key?(mapping, k) end)
-          mapped1 = keys1 |> Enum.map(&Map.fetch!(mapping, &1)) |> MapSet.new()
-          assert MapSet.equal?(mapped1, m1)
+          # positional mapping: p1[i] -> m1[i]
+          Enum.each(Enum.zip(p1, m1), fn {k, v} ->
+            assert Map.get(mapping, k) == v
+          end)
 
-          # mapping values for p2 placeholders correspond exactly to m2
-          keys2 = MapSet.to_list(p2)
-          Enum.each(keys2, fn k -> assert Map.has_key?(mapping, k) end)
-          mapped2 = keys2 |> Enum.map(&Map.fetch!(mapping, &1)) |> MapSet.new()
-          assert MapSet.equal?(mapped2, m2)
-
-          # shared placeholders map to the intersection
-          shared_keys = shared_placeholders
-          Enum.each(shared_keys, fn k -> assert Map.has_key?(mapping, k) end)
-          shared_mapped = shared_keys |> Enum.map(&Map.fetch!(mapping, &1)) |> MapSet.new()
-          assert MapSet.equal?(shared_mapped, MapSet.intersection(m1, m2))
+          # positional mapping: p2[i] -> m2[i]
+          Enum.each(Enum.zip(p2, m2), fn {k, v} ->
+            assert Map.get(mapping, k) == v
+          end)
         end)
       end
     end
@@ -165,9 +146,8 @@ defmodule WolframModel.PropertyTest do
   test "Matcher.match_all is insensitive to input hyperedge ordering" do
     check all(hyperedges <- hyperedges_list_gen(), max_runs: 60) do
       he = Enum.random(hyperedges)
-      size = MapSet.size(he)
-      placeholders = Enum.take([:a, :b, :c, :d, :e], size)
-      pattern = MapSet.new(placeholders)
+      size = length(he)
+      pattern = Enum.take([:a, :b, :c, :d, :e], size)
 
       res1 = Matcher.match(hyperedges, [pattern])
       res2 = Matcher.match(Enum.shuffle(hyperedges), [pattern])
@@ -175,7 +155,7 @@ defmodule WolframModel.PropertyTest do
       normalize = fn res ->
         res
         |> Enum.map(fn %{mapping: m, matched_hyperedges: mh} ->
-          mh_norm = mh |> Enum.map(&Enum.sort(MapSet.to_list(&1))) |> Enum.sort()
+          mh_norm = mh |> Enum.map(&Enum.sort/1) |> Enum.sort()
           mapping_norm = m |> Map.to_list() |> Enum.sort()
           {mh_norm, mapping_norm}
         end)

@@ -9,15 +9,15 @@ defmodule WolframModel.CausalityIndexTest do
 
     # Rule that removes [1,2] and adds [1,4]
     rule1 = %{
-      pattern: [MapSet.new([:a, :b])],
-      replacement: [MapSet.new([:a, :new])],
+      pattern: [[:a, :b]],
+      replacement: [[:a, :new]],
       name: "r1"
     }
 
     # Rule that removes [2,3] and adds [3,5]
     rule2 = %{
-      pattern: [MapSet.new([:a, :b])],
-      replacement: [MapSet.new([:a, :new])],
+      pattern: [[:a, :b]],
+      replacement: [[:a, :new]],
       name: "r2"
     }
 

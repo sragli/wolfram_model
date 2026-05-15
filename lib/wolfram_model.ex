@@ -24,8 +24,8 @@ defmodule WolframModel do
   end
 
   @type rule :: %{
-          pattern: [MapSet.t()],
-          replacement: [MapSet.t()],
+          pattern: [[Hypergraph.vertex()]],
+          replacement: [[Hypergraph.vertex()]],
           name: String.t()
         }
 
@@ -37,9 +37,9 @@ defmodule WolframModel do
     - `id` - unique event id
     - `generation` - generation when the event occurred
     - `rule` - the rule applied
-    - `removed` - hyperedges removed (list of MapSet)
-    - `added` - hyperedges added (list of MapSet)
-    - `affected_vertices` - MapSet of vertices affected
+    - `removed` - hyperedges removed (list of vertex lists)
+    - `added` - hyperedges added (list of vertex lists)
+    - `affected_vertices` - list of vertices affected
     - `parent_ids` - list of parent event ids
     - `metadata` - optional map for extra info
     """
@@ -50,7 +50,7 @@ defmodule WolframModel do
               rule: nil,
               removed: [],
               added: [],
-              affected_vertices: MapSet.new(),
+              affected_vertices: [],
               parent_ids: [],
               metadata: %{}
 
@@ -58,9 +58,9 @@ defmodule WolframModel do
             id: integer(),
             generation: non_neg_integer(),
             rule: WolframModel.rule(),
-            removed: [MapSet.t()],
-            added: [MapSet.t()],
-            affected_vertices: MapSet.t(),
+            removed: [[Hypergraph.vertex()]],
+            added: [[Hypergraph.vertex()]],
+            affected_vertices: [Hypergraph.vertex()],
             parent_ids: [integer()],
             metadata: map()
           }
@@ -197,14 +197,14 @@ defmodule WolframModel do
             model.id_generator
           )
 
-        # Hypergraph.add_hyperedge accepts MapSet directly
+        # Hypergraph.add_hyperedge accepts a vertex list
         Hypergraph.add_hyperedge(hg, actual_vertices)
       end)
 
     # Determine removed and added hyperedges
     removed_hyperedges = match_data.matched_hyperedges |> Enum.map(& &1)
 
-    # collect added hyperedges (as MapSet) from the replacements
+    # collect added hyperedges from the replacements
     added_hyperedges =
       rule.replacement
       |> Enum.map(fn replacement_he ->
@@ -216,11 +216,11 @@ defmodule WolframModel do
         )
       end)
 
-    # affected vertices
+    # affected vertices (deduplicated)
     affected_vertices =
       (removed_hyperedges ++ added_hyperedges)
-      |> Enum.flat_map(&MapSet.to_list/1)
-      |> MapSet.new()
+      |> Enum.flat_map(& &1)
+      |> Enum.uniq()
 
     # parent ids: events that previously touched any affected vertex
     parent_ids =
@@ -272,7 +272,6 @@ defmodule WolframModel do
   # kept verbatim (they appear as literals in spacetime rules).
   defp substitute_vertices(replacement_he, mapping, generation, id_generator) do
     replacement_he
-    |> MapSet.to_list()
     |> Enum.map(fn vertex ->
       case Map.fetch(mapping, vertex) do
         {:ok, mapped} ->
@@ -293,7 +292,6 @@ defmodule WolframModel do
           end
       end
     end)
-    |> MapSet.new()
   end
 
   @doc """
@@ -350,8 +348,9 @@ defmodule WolframModel do
   end
 
   # Canonical key for a single hyperedge (for event position indexing)
+  # Lists are ordered; return as-is since order is semantically meaningful
   defp canonical_hyperedge(he) do
-    Enum.sort(he)
+    he
   end
 
   @doc """
@@ -364,35 +363,33 @@ defmodule WolframModel do
   whose deepest ancestor is in layer N-1.
   """
   @spec foliations(t()) :: [[Event.t()]]
+  def foliations(%__MODULE__{event_map: []}), do: []
+
   def foliations(model) do
     events =
       model.event_map
       |> Enum.sort_by(fn {id, _} -> id end)
       |> Enum.map(fn {_, event} -> event end)
 
-    if events == [] do
-      []
-    else
-      {layer_groups, _id_to_layer} =
-        Enum.reduce(events, {%{}, %{}}, fn event, {layer_groups, id_to_layer} ->
-          layer =
-            if event.parent_ids == [] do
-              0
-            else
-              event.parent_ids
-              |> Enum.map(fn pid -> Map.get(id_to_layer, pid, 0) end)
-              |> Enum.max()
-              |> Kernel.+(1)
-            end
+    {layer_groups, _id_to_layer} =
+      Enum.reduce(events, {%{}, %{}}, fn event, {layer_groups, id_to_layer} ->
+        layer =
+          if event.parent_ids == [] do
+            0
+          else
+            event.parent_ids
+            |> Enum.map(fn pid -> Map.get(id_to_layer, pid, 0) end)
+            |> Enum.max()
+            |> Kernel.+(1)
+          end
 
-          updated_groups = Map.update(layer_groups, layer, [event], &(&1 ++ [event]))
-          {updated_groups, Map.put(id_to_layer, event.id, layer)}
-        end)
+        updated_groups = Map.update(layer_groups, layer, [event], &(&1 ++ [event]))
+        {updated_groups, Map.put(id_to_layer, event.id, layer)}
+      end)
 
-      layer_groups
-      |> Enum.sort_by(fn {layer, _} -> layer end)
-      |> Enum.map(fn {_, evts} -> evts end)
-    end
+    layer_groups
+    |> Enum.sort_by(fn {layer, _} -> layer end)
+    |> Enum.map(fn {_, evts} -> evts end)
   end
 
   @doc """
@@ -425,7 +422,7 @@ defmodule WolframModel do
           i < j,
           Enum.any?(m1.matched_hyperedges, fn he1 ->
             Enum.any?(m2.matched_hyperedges, fn he2 ->
-              not MapSet.disjoint?(he1, he2)
+              he1 -- he1 -- he2 != []
             end)
           end) do
         %{source: i, target: j}
@@ -452,10 +449,7 @@ defmodule WolframModel do
       for {{r1, m1}, i} <- indexed,
           {{r2, m2}, j} <- indexed,
           i < j,
-          MapSet.disjoint?(
-            MapSet.new(m1.matched_hyperedges),
-            MapSet.new(m2.matched_hyperedges)
-          ) do
+          m1.matched_hyperedges -- m1.matched_hyperedges -- m2.matched_hyperedges == [] do
         {r1, m1, r2, m2}
       end
 
@@ -474,7 +468,7 @@ defmodule WolframModel do
 
     fresh_map =
       edges
-      |> Enum.flat_map(&MapSet.to_list/1)
+      |> Enum.flat_map(& &1)
       |> Enum.filter(&fresh_vertex?/1)
       |> Enum.uniq()
       |> Enum.sort()
@@ -483,7 +477,7 @@ defmodule WolframModel do
 
     edges
     |> Enum.map(fn he ->
-      he |> MapSet.to_list() |> Enum.map(&Map.get(fresh_map, &1, &1)) |> Enum.sort()
+      he |> Enum.map(&Map.get(fresh_map, &1, &1)) |> Enum.sort()
     end)
     |> Enum.sort()
   end

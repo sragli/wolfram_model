@@ -1,1 +1,0 @@
-* Simplify the representation of the multiway graph and optimize the explore function.

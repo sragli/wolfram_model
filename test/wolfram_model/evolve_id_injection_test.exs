@@ -7,8 +7,8 @@ defmodule WolframModel.EvolveIdInjectionTest do
     hg = Hypergraph.new() |> Hypergraph.add_hyperedge([1, 2])
 
     rule = %{
-      pattern: [MapSet.new([:x, :y])],
-      replacement: [MapSet.new([:x, :y]), MapSet.new([:new])],
+      pattern: [[:x, :y]],
+      replacement: [[:x, :y], [:new]],
       name: "add_new"
     }
 
@@ -19,7 +19,7 @@ defmodule WolframModel.EvolveIdInjectionTest do
 
     # After two steps we expect a generated vertex with generation 1 and id 777
     assert Enum.any?(Hypergraph.hyperedges(final.hypergraph), fn he ->
-             MapSet.member?(he, {:new, 1, 777})
+             {:new, 1, 777} in he
            end)
   end
 end

@@ -5,7 +5,7 @@ defmodule WolframModel.FoliationsTest do
 
   defp two_step_model do
     hg = Hypergraph.new() |> Hypergraph.add_hyperedge([1, 2]) |> Hypergraph.add_hyperedge([2, 3])
-    rule = %{pattern: [MapSet.new([:a, :b])], replacement: [MapSet.new([:a, :new])], name: "r"}
+    rule = %{pattern: [[:a, :b]], replacement: [[:a, :new]], name: "r"}
 
     WolframModel.new(hg, [rule])
     |> WolframModel.evolve_step()

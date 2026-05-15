@@ -40,12 +40,11 @@ defmodule WolframModel.RuleAnalysis do
   def introduces_new_vertices?(rule) do
     pattern_atoms =
       rule.pattern
-      |> Enum.flat_map(&MapSet.to_list/1)
-      |> MapSet.new()
+      |> Enum.flat_map(& &1)
 
     rule.replacement
-    |> Enum.flat_map(&MapSet.to_list/1)
-    |> Enum.any?(fn v -> is_atom(v) and not MapSet.member?(pattern_atoms, v) end)
+    |> Enum.flat_map(& &1)
+    |> Enum.any?(fn v -> is_atom(v) and v not in pattern_atoms end)
   end
 
   @doc """
@@ -73,8 +72,8 @@ defmodule WolframModel.RuleAnalysis do
   # --- private helpers ---
 
   defp pattern_sizes(rule),
-    do: rule.pattern |> Enum.map(&MapSet.size/1) |> Enum.sort()
+    do: rule.pattern |> Enum.map(&length/1) |> Enum.sort()
 
   defp replacement_sizes(rule),
-    do: rule.replacement |> Enum.map(&MapSet.size/1) |> Enum.sort()
+    do: rule.replacement |> Enum.map(&length/1) |> Enum.sort()
 end

@@ -7,8 +7,8 @@ defmodule WolframModel.EventExportTest do
     hg = Hypergraph.new() |> Hypergraph.add_hyperedge([1, 2]) |> Hypergraph.add_hyperedge([2, 3])
 
     rule = %{
-      pattern: [MapSet.new([:a, :b])],
-      replacement: [MapSet.new([:a, :new])],
+      pattern: [[:a, :b]],
+      replacement: [[:a, :new]],
       name: "r"
     }
 

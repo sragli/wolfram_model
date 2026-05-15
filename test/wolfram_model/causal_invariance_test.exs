@@ -11,8 +11,8 @@ defmodule WolframModel.CausalInvarianceTest do
       |> Hypergraph.add_hyperedge([3, 4])
 
     rule = %{
-      pattern: [MapSet.new([:a, :b])],
-      replacement: [MapSet.new([:a, :b])],
+      pattern: [[:a, :b]],
+      replacement: [[:a, :b]],
       name: "identity"
     }
 
@@ -28,7 +28,7 @@ defmodule WolframModel.CausalInvarianceTest do
 
   test "returns boolean" do
     hg = Hypergraph.new() |> Hypergraph.add_hyperedge([1, 2]) |> Hypergraph.add_hyperedge([2, 3])
-    rule = %{pattern: [MapSet.new([:a, :b])], replacement: [MapSet.new([:a])], name: "shrink"}
+    rule = %{pattern: [[:a, :b]], replacement: [[:a]], name: "shrink"}
     model = WolframModel.new(hg, [rule])
     result = WolframModel.causally_invariant?(model)
     assert is_boolean(result)

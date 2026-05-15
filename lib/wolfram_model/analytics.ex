@@ -82,14 +82,12 @@ defmodule WolframModel.Analytics do
       |> Hypergraph.hyperedges()
       |> Enum.reduce(%{}, fn he, acc ->
         Enum.reduce(he, acc, fn v, acc2 ->
-          neighbors = MapSet.delete(he, v)
+          neighbors = he |> Enum.reject(&(&1 == v)) |> MapSet.new()
           Map.update(acc2, v, neighbors, &MapSet.union(&1, neighbors))
         end)
       end)
 
-    Enum.reduce(Hypergraph.vertices(hg), adj, fn v, acc ->
-      Map.put_new(acc, v, MapSet.new())
-    end)
+    adj
   end
 
   @doc """
@@ -182,8 +180,20 @@ defmodule WolframModel.Analytics do
     do: 0.0
 
   def calculate_growth_rate(%WolframModel{evolution_history: history}) do
-    recent = List.first(history) |> Hypergraph.vertex_count()
-    previous = Enum.at(history, 1) |> Hypergraph.vertex_count()
+    recent =
+      List.first(history)
+      |> Hypergraph.hyperedges()
+      |> Enum.flat_map(& &1)
+      |> MapSet.new()
+      |> MapSet.size()
+
+    previous =
+      Enum.at(history, 1)
+      |> Hypergraph.hyperedges()
+      |> Enum.flat_map(& &1)
+      |> MapSet.new()
+      |> MapSet.size()
+
     if previous == 0, do: 0.0, else: (recent - previous) / previous
   end
 

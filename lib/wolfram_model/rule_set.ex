@@ -4,8 +4,8 @@ defmodule WolframModel.RuleSet do
   """
 
   @type rule :: %{
-          pattern: [MapSet.t()],
-          replacement: [MapSet.t()],
+          pattern: [[term()]],
+          replacement: [[term()]],
           name: String.t()
         }
 
@@ -18,40 +18,40 @@ defmodule WolframModel.RuleSet do
       # Rule 1: Binary split - edge becomes two edges with new vertex
       %{
         name: "binary_split",
-        pattern: [MapSet.new([1, 2])],
-        replacement: [MapSet.new([1, :new]), MapSet.new([:new, 2])]
+        pattern: [[1, 2]],
+        replacement: [[1, :new], [:new, 2]]
       },
 
       # Rule 2: Triangle completion - two edges sharing vertex become triangle
       %{
         name: "triangle_completion",
-        pattern: [MapSet.new([1, 2]), MapSet.new([2, 3])],
-        replacement: [MapSet.new([1, 2, 3])]
+        pattern: [[1, 2], [2, 3]],
+        replacement: [[1, 2, 3]]
       },
 
       # Rule 3: Triangle split - triangle becomes three edges with center
       %{
         name: "triangle_split",
-        pattern: [MapSet.new([1, 2, 3])],
+        pattern: [[1, 2, 3]],
         replacement: [
-          MapSet.new([1, :center]),
-          MapSet.new([2, :center]),
-          MapSet.new([3, :center])
+          [1, :center],
+          [2, :center],
+          [3, :center]
         ]
       },
 
       # Rule 4: Edge duplication - single edge becomes parallel edges
       %{
         name: "edge_duplication",
-        pattern: [MapSet.new([1, 2])],
-        replacement: [MapSet.new([1, 2]), MapSet.new([1, 2, :parallel])]
+        pattern: [[1, 2]],
+        replacement: [[1, 2], [1, 2, :parallel]]
       },
 
       # Rule 5: Four-cycle formation
       %{
         name: "four_cycle",
-        pattern: [MapSet.new([1, 2]), MapSet.new([3, 4])],
-        replacement: [MapSet.new([1, 2, 3, 4])]
+        pattern: [[1, 2], [2, 3]],
+        replacement: [[1, 2, 2, 3]]
       }
     ]
   end
@@ -64,17 +64,17 @@ defmodule WolframModel.RuleSet do
     [
       %{
         name: "growth_split",
-        pattern: [MapSet.new([1, 2])],
-        replacement: [MapSet.new([1, :new]), MapSet.new([:new, 2]), MapSet.new([1, 2])]
+        pattern: [[1, 2]],
+        replacement: [[1, :new], [:new, 2], [1, 2]]
       },
       %{
         name: "growth_expand",
-        pattern: [MapSet.new([1, 2, 3])],
+        pattern: [[1, 2, 3]],
         replacement: [
-          MapSet.new([1, 2, 3]),
-          MapSet.new([1, :new1]),
-          MapSet.new([2, :new2]),
-          MapSet.new([3, :new3])
+          [1, 2, 3],
+          [1, :new1],
+          [2, :new2],
+          [3, :new3]
         ]
       }
     ]
@@ -85,13 +85,13 @@ defmodule WolframModel.RuleSet do
       # Conway-like rules adapted for hypergraphs
       %{
         name: "survival",
-        pattern: [MapSet.new([1, 2]), MapSet.new([1, 3])],
-        replacement: [MapSet.new([1, 2, 3])]
+        pattern: [[1, 2], [1, 3]],
+        replacement: [[1, 2, 3]]
       },
       %{
         name: "death",
-        pattern: [MapSet.new([1, 2, 3, 4])],
-        replacement: [MapSet.new([1, 2]), MapSet.new([3, 4])]
+        pattern: [[1, 2, 3, 4]],
+        replacement: [[1, 2], [3, 4]]
       }
     ]
   end
@@ -101,16 +101,16 @@ defmodule WolframModel.RuleSet do
       # Rules that might generate spacetime-like structures
       %{
         name: "time_step",
-        pattern: [MapSet.new([:t, :x])],
-        replacement: [MapSet.new([:t, :x]), MapSet.new([{:t, 1}, :x])]
+        pattern: [[:t, :x]],
+        replacement: [[:t, :x], [{:t, 1}, :x]]
       },
       %{
         name: "space_connection",
-        pattern: [MapSet.new([{:t, 0}, :x1]), MapSet.new([{:t, 0}, :x2])],
+        pattern: [[{:t, 0}, :x1], [{:t, 0}, :x2]],
         replacement: [
-          MapSet.new([{:t, 0}, :x1]),
-          MapSet.new([{:t, 0}, :x2]),
-          MapSet.new([{:t, 0}, :x1, :x2])
+          [{:t, 0}, :x1],
+          [{:t, 0}, :x2],
+          [{:t, 0}, :x1, :x2]
         ]
       }
     ]

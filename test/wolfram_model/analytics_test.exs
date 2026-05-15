@@ -56,15 +56,19 @@ defmodule WolframModel.AnalyticsTest do
   end
 
   test "calculate_growth_rate computes recent/previous change" do
-    hg1 = Hypergraph.new() |> Hypergraph.add_vertex(:a)
+    hg1 = Hypergraph.new() |> Hypergraph.add_hyperedge([:a])
     hg2 = Hypergraph.new() |> Hypergraph.add_hyperedge([1, 2]) |> Hypergraph.add_hyperedge([2, 3])
+
+    vertex_count = fn hg ->
+      hg |> Hypergraph.hyperedges() |> Enum.flat_map(& &1) |> MapSet.new() |> MapSet.size()
+    end
 
     model = WolframModel.new(hg1, [])
     model = %{model | evolution_history: [hg2, hg1]}
 
     assert Analytics.calculate_growth_rate(model) ==
-             (Hypergraph.vertex_count(hg2) - Hypergraph.vertex_count(hg1)) /
-               Hypergraph.vertex_count(hg1)
+             (vertex_count.(hg2) - vertex_count.(hg1)) /
+               vertex_count.(hg1)
   end
 
   test "calculate_complexity returns 0 when CorrelationLength absent" do

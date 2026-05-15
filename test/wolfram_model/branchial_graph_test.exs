@@ -5,7 +5,7 @@ defmodule WolframModel.BranchialGraphTest do
 
   test "branchial_graph returns nodes and edges map" do
     hg = Hypergraph.new() |> Hypergraph.add_hyperedge([1, 2]) |> Hypergraph.add_hyperedge([2, 3])
-    rule = %{pattern: [MapSet.new([:a, :b])], replacement: [MapSet.new([:a, :new])], name: "r"}
+    rule = %{pattern: [[:a, :b]], replacement: [[:a, :new]], name: "r"}
     model = WolframModel.new(hg, [rule])
 
     bg = WolframModel.branchial_graph(model)
@@ -16,7 +16,7 @@ defmodule WolframModel.BranchialGraphTest do
 
   test "branchial_graph nodes count matches number of matches" do
     hg = Hypergraph.new() |> Hypergraph.add_hyperedge([1, 2]) |> Hypergraph.add_hyperedge([2, 3])
-    rule = %{pattern: [MapSet.new([:a, :b])], replacement: [MapSet.new([:a, :new])], name: "r"}
+    rule = %{pattern: [[:a, :b]], replacement: [[:a, :new]], name: "r"}
     model = WolframModel.new(hg, [rule])
 
     bg = WolframModel.branchial_graph(model)
@@ -27,7 +27,7 @@ defmodule WolframModel.BranchialGraphTest do
   test "branchial_graph connects overlapping matches" do
     # Both edges share vertex 2, so both matches are branchially adjacent
     hg = Hypergraph.new() |> Hypergraph.add_hyperedge([1, 2]) |> Hypergraph.add_hyperedge([2, 3])
-    rule = %{pattern: [MapSet.new([:a, :b])], replacement: [MapSet.new([:a, :new])], name: "r"}
+    rule = %{pattern: [[:a, :b]], replacement: [[:a, :new]], name: "r"}
     model = WolframModel.new(hg, [rule])
 
     bg = WolframModel.branchial_graph(model)
@@ -36,7 +36,7 @@ defmodule WolframModel.BranchialGraphTest do
 
   test "branchial_graph edges reference valid node ids" do
     hg = Hypergraph.new() |> Hypergraph.add_hyperedge([1, 2]) |> Hypergraph.add_hyperedge([2, 3])
-    rule = %{pattern: [MapSet.new([:a, :b])], replacement: [MapSet.new([:a, :new])], name: "r"}
+    rule = %{pattern: [[:a, :b]], replacement: [[:a, :new]], name: "r"}
     model = WolframModel.new(hg, [rule])
 
     bg = WolframModel.branchial_graph(model)

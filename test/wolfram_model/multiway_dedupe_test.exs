@@ -7,8 +7,8 @@ defmodule WolframModel.MultiwayDedupeTest do
     hg = Hypergraph.new() |> Hypergraph.add_hyperedge([1, 2]) |> Hypergraph.add_hyperedge([3, 4])
 
     rule = %{
-      pattern: [MapSet.new([:a, :b])],
-      replacement: [MapSet.new([:a, :b])],
+      pattern: [[:a, :b]],
+      replacement: [[:a, :b]],
       name: "noop"
     }
 

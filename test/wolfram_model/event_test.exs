@@ -7,8 +7,8 @@ defmodule WolframModel.EventTest do
     hg = Hypergraph.new() |> Hypergraph.add_hyperedge([1, 2])
 
     rule = %{
-      pattern: [MapSet.new([:a, :b])],
-      replacement: [MapSet.new([:a, :b, :c])],
+      pattern: [[:a, :b]],
+      replacement: [[:a, :b, :c]],
       name: "add_c"
     }
 
@@ -36,7 +36,7 @@ defmodule WolframModel.EventTest do
            )
 
     # Affected vertices include 1,2 and new vertex from substitution
-    affected = event.affected_vertices |> MapSet.to_list()
+    affected = event.affected_vertices
     assert Enum.member?(affected, 1) and Enum.member?(affected, 2)
 
     # Indices updated

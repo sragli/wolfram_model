@@ -7,8 +7,8 @@ defmodule WolframModel.SafeIdTest do
     hg = Hypergraph.new() |> Hypergraph.add_hyperedge([:a, :b])
 
     rule = %{
-      pattern: [MapSet.new([:a, :b])],
-      replacement: [MapSet.new([:new])],
+      pattern: [[:a, :b]],
+      replacement: [[:new]],
       name: "new_vertex"
     }
 
@@ -18,7 +18,7 @@ defmodule WolframModel.SafeIdTest do
     # Find the replacement hyperedge with the new vertex
     new_vertex_found =
       Enum.any?(Hypergraph.hyperedges(m2.hypergraph), fn he ->
-        Enum.any?(MapSet.to_list(he), fn v ->
+        Enum.any?(he, fn v ->
           case v do
             {tag, gen, id} when is_atom(tag) and is_integer(gen) and is_integer(id) -> tag == :new
             _ -> false
@@ -33,8 +33,8 @@ defmodule WolframModel.SafeIdTest do
     hg = Hypergraph.new() |> Hypergraph.add_hyperedge([:a, :b])
 
     rule = %{
-      pattern: [MapSet.new([:a, :b])],
-      replacement: [MapSet.new([:new])],
+      pattern: [[:a, :b]],
+      replacement: [[:new]],
       name: "new_vertex"
     }
 
@@ -44,7 +44,7 @@ defmodule WolframModel.SafeIdTest do
     m2 = WolframModel.evolve_step(model)
 
     assert Enum.any?(Hypergraph.hyperedges(m2.hypergraph), fn he ->
-             MapSet.member?(he, {:new, 0, 123})
+             {:new, 0, 123} in he
            end)
   end
 end

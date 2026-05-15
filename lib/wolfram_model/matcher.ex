@@ -5,65 +5,67 @@ defmodule WolframModel.Matcher do
   Exposes functions to match single- and two-hyperedge patterns against a list
   of hyperedges and to build consistent mappings between pattern placeholders
   and actual vertices.
+
+  Hyperedges are ordered lists. Patterns are matched positionally: the element
+  at position i in the pattern binds to the element at position i in the
+  hyperedge. Shared pattern variables across two patterns must map to the same
+  vertex in both matched hyperedges.
   """
 
   alias Hypergraph
 
-  @type match_result :: %{mapping: map(), matched_hyperedges: [MapSet.t()]}
+  @type match_result :: %{mapping: map(), matched_hyperedges: [Hypergraph.hyperedge()]}
 
-  @spec match([MapSet.t()] | MapSet.t(MapSet.t()), [MapSet.t()]) :: [match_result()]
+  @spec match([Hypergraph.hyperedge()], [Hypergraph.hyperedge()]) :: [match_result()]
   def match(hyperedges, [single_pattern]) do
-    pattern_size = MapSet.size(single_pattern)
+    pattern_size = length(single_pattern)
 
     hyperedges
-    |> Enum.filter(fn he -> MapSet.size(he) == pattern_size end)
+    |> Enum.filter(fn he -> length(he) == pattern_size end)
     |> Enum.map(fn matched_he ->
-      pattern_list = Enum.sort(single_pattern)
-      matched_list = Enum.sort(matched_he)
-      mapping = Enum.zip(pattern_list, matched_list) |> Map.new()
+      mapping = Enum.zip(single_pattern, matched_he) |> Map.new()
       %{mapping: mapping, matched_hyperedges: [matched_he]}
     end)
   end
 
   def match(hyperedges, [p1, p2]) do
-    p1_size = MapSet.size(p1)
-    p2_size = MapSet.size(p2)
+    p1_size = length(p1)
+    p2_size = length(p2)
 
     for he1 <- hyperedges,
         he2 <- hyperedges,
         he1 != he2,
-        MapSet.size(he1) == p1_size,
-        MapSet.size(he2) == p2_size,
-        !MapSet.disjoint?(he1, he2) do
-      mapping = build_mapping_for_two(p1, p2, he1, he2)
-      %{mapping: mapping, matched_hyperedges: [he1, he2]}
+        length(he1) == p1_size,
+        length(he2) == p2_size,
+        shares_vertex?(he1, he2) do
+      map1 = Enum.zip(p1, he1) |> Map.new()
+      map2 = Enum.zip(p2, he2) |> Map.new()
+
+      if consistent_mappings?(map1, map2) do
+        %{mapping: Map.merge(map1, map2), matched_hyperedges: [he1, he2]}
+      end
     end
+    |> Enum.reject(&is_nil/1)
   end
 
   # Fallback for unsupported patterns
   @spec match(term(), term()) :: []
   def match(_hyperedges, _pattern), do: []
 
-  @spec build_mapping_for_two(MapSet.t(), MapSet.t(), MapSet.t(), MapSet.t()) :: map()
+  @spec build_mapping_for_two([term()], [term()], [term()], [term()]) :: map()
   def build_mapping_for_two(p1, p2, he1, he2) do
-    p_shared = Enum.sort(MapSet.intersection(p1, p2))
-    he_shared = Enum.sort(MapSet.intersection(he1, he2))
+    map1 = Enum.zip(p1, he1) |> Map.new()
+    map2 = Enum.zip(p2, he2) |> Map.new()
+    Map.merge(map1, map2)
+  end
 
-    # Start by mapping shared pattern placeholders to shared actual vertices in sorted order
-    shared_mapping = Enum.zip(p_shared, he_shared) |> Map.new()
+  # Returns true if the two hyperedges share at least one vertex.
+  defp shares_vertex?(he1, he2) do
+    he1 -- he1 -- he2 != []
+  end
 
-    # Map remaining pattern elements in p1 to remaining actual vertices in he1
-    p1_remaining = Enum.sort(p1) -- p_shared
-    he1_remaining = Enum.sort(he1) -- he_shared
-
-    map_p1 = Enum.zip(p1_remaining, he1_remaining) |> Map.new()
-
-    # Map remaining pattern elements in p2 to remaining actual vertices in he2
-    p2_remaining = Enum.sort(p2) -- p_shared
-    he2_remaining = Enum.sort(he2) -- he_shared
-
-    map_p2 = Enum.zip(p2_remaining, he2_remaining) |> Map.new()
-
-    Map.merge(shared_mapping, Map.merge(map_p1, map_p2))
+  # Returns true if no key shared between map1 and map2 maps to different values.
+  defp consistent_mappings?(map1, map2) do
+    Enum.all?(map1, fn {k, v} -> not Map.has_key?(map2, k) or map2[k] == v end)
   end
 end
