@@ -8,13 +8,14 @@ This repository contains a full-featured Elixir implementation of the Wolfram Mo
 * Causal networks tracking rule applications
 * Multiway DAG evolution exploring all possible paths
 * Emergent structure analysis including dimension estimation and conservation laws
+* SVG visualizations for hypergraphs, multiway DAGs, branchial graphs, and geodesic plots
 
 ## Installation
 
 ```elixir
 def deps do
   [
-    {:wolfram_model, "~> 1.0"}
+    {:wolfram_model, "~> 1.1.0"}
   ]
 end
 ```
@@ -53,6 +54,15 @@ end
 * Detects conserved quantities (vertex count, edge count, total degree and their parities) via `Analytics.detect_conserved_quantities/1`
 * Uses an information-theoretic approach to measure spatial coherence (Correlation Length)
 * Analyzes diameter and connectivity patterns
+
+### Visualization
+
+* `HypergraphSVG.to_svg/2` — force-directed layout of a hypergraph; binary edges as directed arrows, N-ary edges as translucent polygons
+* `HypergraphSVG.evolution_to_svg/2` — horizontal strip of panels showing every generation
+* `MultiwayGraphSVG.to_svg/2` — hierarchical DAG layout of multiway evolution; nodes labelled with vertex/edge counts
+* `BranchialGraphSVG.to_svg/2` — circular layout of conflicting rule matches with rule-name legend
+* `GeodesicPlotSVG.to_svg/2` — dual-panel chart: linear `V(r)` vs `r` and log-log with best-fit dimension slope
+* `CausalGraphSVG.to_svg/1` — generation-layered causal event graph
 
 ### Rule Analysis
 
@@ -130,6 +140,41 @@ RuleAnalysis.introduces_new_vertices?(rule)
 RuleAnalysis.hyperedge_delta(rule)
 RuleAnalysis.canonical_form(rule)
 RuleAnalysis.equivalent?(rule_a, rule_b)
+
+# SVG visualizations
+alias WolframModel.{HypergraphSVG, MultiwayGraphSVG, BranchialGraphSVG, GeodesicPlotSVG, CausalGraphSVG}
+
+# Render the current hypergraph
+evolved.hypergraph
+|> HypergraphSVG.to_svg(title: "Step #{evolved.generation}")
+|> then(&File.write!("hypergraph.svg", &1))
+
+# Render the full evolution as a strip of panels
+evolved
+|> HypergraphSVG.evolution_to_svg(max_snapshots: 8, panel_size: 200)
+|> then(&File.write!("evolution.svg", &1))
+
+# Render the multiway DAG
+dag = WolframModel.multiway_explore_dag(universe, 3)
+dag
+|> MultiwayGraphSVG.to_svg()
+|> then(&File.write!("multiway.svg", &1))
+
+# Render the branchial graph
+WolframModel.branchial_graph(universe)
+|> BranchialGraphSVG.to_svg(title: "Branchial graph")
+|> then(&File.write!("branchial.svg", &1))
+
+# Render the causal graph
+evolved
+|> WolframModel.causal_network_data()
+|> CausalGraphSVG.to_svg()
+|> then(&File.write!("causal.svg", &1))
+
+# Render the geodesic ball growth plot with dimension estimate
+evolved.hypergraph
+|> GeodesicPlotSVG.to_svg(seeds: 5, title: "Geodesic dimension")
+|> then(&File.write!("geodesic.svg", &1))
 ```
 
 ## References

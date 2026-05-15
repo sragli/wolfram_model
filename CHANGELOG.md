@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented in this file.
 
+## v1.1.0 (2026-05-15)
+
+### New features
+- **`WolframModel.HypergraphSVG`** — SVG rendering of a hypergraph state using
+  a force-directed spring layout. Unary edges render as dashed rings, binary
+  edges as directed arrows, and N-ary edges as translucent coloured polygons.
+  `evolution_to_svg/2` produces a horizontal strip of panels, one per
+  generation snapshot.
+- **`WolframModel.MultiwayGraphSVG`** — hierarchical (BFS-level) layout of the
+  multiway DAG returned by `multiway_explore_dag/2`. Nodes are labelled with
+  vertex count, edge count, and generation; the root is highlighted; edges are
+  drawn as cubic Bézier curves.
+- **`WolframModel.BranchialGraphSVG`** — circular layout of the branchial graph
+  returned by `branchial_graph/1`. Nodes are coloured by rule name with a
+  rule-name legend; conflict edges are drawn dashed.
+- **`WolframModel.GeodesicPlotSVG`** — dual-panel SVG line chart showing
+  geodesic ball growth: a linear `V(r)` vs `r` panel and a log-log panel with
+  a best-fit slope labelled `d≈…` giving the estimated spatial dimension.
+  Uses the same hypergraph-native BFS as `Analytics.estimate_dimension/1`.
+
 ## v1.0.0 (2026-05-15)
 
 ### Breaking changes
