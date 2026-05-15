@@ -85,16 +85,34 @@ evolved = WolframModel.evolve_steps(initial, steps)
 final_stats = Hypergraph.stats(evolved.hypergraph)
 ```
 
-## Causal Network
+```elixir
+WolframModel.HypergraphSVG.to_svg(evolved.hypergraph)
+|> Kino.HTML.new()
+```
 
 ```elixir
-causal_data = WolframModel.causal_network_data(evolved)
+WolframModel.GeodesicPlotSVG.to_svg(evolved.hypergraph)
+|> Kino.HTML.new()
 ```
+
+```elixir
+WolframModel.HypergraphSVG.evolution_to_svg(evolved)
+|> Kino.HTML.new()
+```
+
+```elixir
+WolframModel.multiway_explore_dag(evolved, 2)
+|> WolframModel.MultiwayGraphSVG.to_svg()
+|> Kino.HTML.new()
+```
+
+## Causal Network
 
 This shows how evolution events are causally connected through time:
 
 ```elixir
-WolframModel.CausalGraphSVG.to_svg(causal_data)
+WolframModel.causal_network_data(evolved)
+|> WolframModel.CausalGraphSVG.to_svg()
 |> Kino.HTML.new()
 ```
 
@@ -137,12 +155,9 @@ state — these are the branching points in multiway evolution. Two nodes are
 adjacent when their matched hyperedges share a vertex.
 
 ```elixir
-bg = WolframModel.branchial_graph(initial)
-
-IO.puts("Branching matches: #{length(bg.nodes)}")
-IO.puts("Branchial edges:   #{length(bg.edges)}")
-
-bg
+WolframModel.branchial_graph(evolved)
+|> WolframModel.BranchialGraphSVG.to_svg()
+|> Kino.HTML.new()
 ```
 
 ## Causal Invariance
@@ -151,7 +166,7 @@ Check whether all pairs of non-overlapping rule applications at the initial
 state commute (a necessary condition for relativistic invariance).
 
 ```elixir
-WolframModel.causally_invariant?(initial)
+WolframModel.causally_invariant?(evolved)
 ```
 
 ## Event Graph Export

@@ -89,7 +89,8 @@ defmodule WolframModel.MultiwayGraphSVG do
 
     max_cols = by_level |> Map.values() |> Enum.map(&length/1) |> Enum.max(fn -> 1 end)
 
-    Map.new(by_level, fn {level, keys} ->
+    by_level
+    |> Enum.flat_map(fn {level, keys} ->
       n = length(keys)
       total_row_w = max_cols * @col_gap
       start_x = (total_row_w - (n - 1) * @col_gap) / 2 + 20
@@ -102,7 +103,6 @@ defmodule WolframModel.MultiwayGraphSVG do
         {key, {Float.round(x, 1), Float.round(y, 1)}}
       end)
     end)
-    |> Enum.flat_map(fn {_level, pairs} -> pairs end)
     |> Map.new()
   end
 
