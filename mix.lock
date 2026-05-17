@@ -1,7 +1,7 @@
 %{
   "dialyxir": {:hex, :dialyxir, "1.4.7", "dda948fcee52962e4b6c5b4b16b2d8fa7d50d8645bbae8b8685c3f9ecb7f5f4d", [:mix], [{:erlex, ">= 0.2.8", [hex: :erlex, repo: "hexpm", optional: false]}], "hexpm", "b34527202e6eb8cee198efec110996c25c5898f43a4094df157f8d28f27d9efe"},
   "erlex": {:hex, :erlex, "0.2.8", "cd8116f20f3c0afe376d1e8d1f0ae2452337729f68be016ea544a72f767d9c12", [:mix], [], "hexpm", "9d66ff9fedf69e49dc3fd12831e12a8a37b76f8651dd21cd45fcf5561a8a7590"},
-  "hypergraph": {:git, "https://github.com/sragli/hypergraph.git", "892b36259294c7e382bb3205d74c1cc0529efe67", []},
+  "hypergraph": {:hex, :hypergraph, "1.0.0", "24f7e82b54893aa0b6d994c01a0c6f0d8598949e3825ed8aaf41b2fba6aae370", [:mix], [{:vega_lite, "~> 0.1", [hex: :vega_lite, repo: "hexpm", optional: false]}], "hexpm", "289cdd5f477c43b9ef8334b4cffb2d4db9e138cbf8fbbd984e2d41e327890257"},
   "stream_data": {:hex, :stream_data, "0.6.0", "e87a9a79d7ec23d10ff83eb025141ef4915eeb09d4491f79e52f2562b73e5f47", [:mix], [], "hexpm", "b92b5031b650ca480ced047578f1d57ea6dd563f5b57464ad274718c9c29501c"},
   "table": {:hex, :table, "0.1.2", "87ad1125f5b70c5dea0307aa633194083eb5182ec537efc94e96af08937e14a8", [:mix], [], "hexpm", "7e99bc7efef806315c7e65640724bf165c3061cdc5d854060f74468367065029"},
   "vega_lite": {:hex, :vega_lite, "0.1.11", "2b261d21618f6fa9f63bb4542f0262982d2e40aea3f83e935788fe172902b3c2", [:mix], [{:table, "~> 0.1.0", [hex: :table, repo: "hexpm", optional: false]}], "hexpm", "d18c3f11369c14bdf36ab53010c06bf5505c221cbcb32faac7420cf6926b3c50"},

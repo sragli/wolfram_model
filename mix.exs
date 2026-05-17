@@ -43,7 +43,7 @@ defmodule WolframModel.MixProject do
 
   defp deps do
     [
-      {:hypergraph, git: "https://github.com/sragli/hypergraph.git"},
+      {:hypergraph, "~> 1.0.0"},
       {:dialyxir, "~> 1.2", only: [:dev], runtime: false},
       {:stream_data, "~> 0.6", only: :test}
     ]
