@@ -1,0 +1,618 @@
+# Wolfram Model — An Interactive Guide
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.12"},
+  {:kino_vega_lite, "~> 0.1"},
+  {:vega_lite, "~> 0.1"},
+  {:wolfram_model, path: __DIR__}
+])
+```
+
+## 1 What Is the Wolfram Model?
+
+The **Wolfram Model** — part of Stephen Wolfram's *Wolfram Physics Project* — is a
+computational framework for building a fundamental theory of physics from
+simple, discrete rules. The central claim is that the universe itself may be a
+kind of abstract computation: a hypergraph that rewrites itself according to a
+small set of substitution rules, and whose large-scale limit produces the
+familiar laws of space, time, gravity, and quantum mechanics.
+
+### 1.1  Hypergraphs as Space
+
+Ordinary graphs connect pairs of vertices with binary edges. A **hypergraph**
+generalises this: each *hyperedge* can relate *any number* of vertices at once.
+In the Wolfram Model, the current state of the universe is represented by a
+hypergraph. Vertices are anonymous atoms (just IDs); hyperedges encode
+relationships — there is no pre-existing notion of position, distance, or
+dimensionality. All geometry *emerges* from the connectivity pattern.
+
+```
+Hyperedge [1, 2, 3] links vertices 1, 2, and 3.
+Hyperedge [4, 5]    links vertices 4 and 5 (ordinary binary edge).
+```
+
+### 1.2  Rewriting Rules
+
+A **rule** maps a pattern — a list of input hyperedges — to a replacement — a
+list of output hyperedges. Variables in the pattern are bound to real vertices
+when a match is found; the matched input hyperedges are removed and the
+replacement hyperedges are inserted. New vertices introduced by a rule (atoms
+marked `:new`, `:new1`, etc.) receive globally unique IDs at each application.
+
+A canonical Wolfram Physics rule written in standard notation:
+
+```
+{{x, y}, {x, z}} -> {{x, y}, {x, w}, {y, w}, {z, w}}
+```
+
+This reads: *wherever two hyperedges share a left vertex x, remove them and
+replace with four new hyperedges, introducing a fresh vertex w.*
+
+### 1.3  The Updating Process and Causal Networks
+
+Each time a rule fires on a matched set of hyperedges, it creates an **event**.
+Events form a partial order: event B *causally depends on* event A if B used a
+hyperedge created by A. This partial order is the **causal network** — the
+discrete analogue of a Lorentzian spacetime manifold. Different orderings of
+updates (which match to apply first) correspond to different reference frames;
+**causal invariance** (confluence) is the discrete analogue of relativistic
+covariance.
+
+### 1.4  Multiway Evolution and Quantum Mechanics
+
+When more than one match exists, we can branch and apply *every* possible rule
+at each step, building a **multiway system** — a DAG of all possible
+evolutionary histories. In this picture, different branches represent
+superpositions of universes. The **branchial graph** connects branches that
+diverged from the same parent state; its large-scale geometry is proposed to
+encode quantum mechanical structure, including Hilbert space and quantum
+entanglement.
+
+### 1.5  Emergent Geometry and General Relativity
+
+For rules that produce large, regular hypergraphs, the geodesic ball growth
+formula reveals an effective dimension:
+
+$$V(r) \sim r^d$$
+
+where $V(r)$ is the number of vertices within graph distance $r$ of a seed. The
+next-order correction to this formula encodes **Ricci scalar curvature**:
+
+$$V(r) \approx C_d \, r^d \left(1 - \frac{R\, r^2}{6(d+2)}\right)$$
+
+Wolfram and collaborators have shown that the Einstein field equations of
+general relativity emerge as consistency conditions on the causal network in
+the continuum limit — meaning the dynamics of hypergraph rewriting *reproduce
+gravity* at large scales.
+
+---
+
+## 2  Setup — Aliases and Helpers
+
+```elixir
+alias WolframModel
+alias WolframModel.{Analytics, RuleSet, RuleAnalysis, Rule}
+alias WolframModel.{HypergraphSVG, GeodesicPlotSVG, CausalGraphSVG,
+                    MultiwayGraphSVG, BranchialGraphSVG}
+alias Hypergraph
+
+render = fn svg -> Kino.HTML.new(svg) end
+:ok
+```
+
+---
+
+## 3  Building a Universe from Scratch
+
+A universe starts with an **initial hypergraph** and a set of **rules**. The
+hypergraph can be as small as a single edge; the rules will grow it step by step.
+
+```elixir
+# Initial state: a short chain of binary edges
+initial_hg =
+  Hypergraph.new()
+  |> Hypergraph.add_hyperedge([1, 2])
+  |> Hypergraph.add_hyperedge([2, 3])
+  |> Hypergraph.add_hyperedge([3, 4])
+  |> Hypergraph.add_hyperedge([4, 5])
+
+# Growth rules: split each binary edge and sprout new branches
+rules = RuleSet.rule_set(:growth)
+
+universe = WolframModel.new(initial_hg, rules)
+Hypergraph.stats(universe.hypergraph)
+```
+
+### 3.1  Evolving the Universe
+
+```elixir
+steps = 20
+evolved = WolframModel.evolve_steps(universe, steps)
+
+IO.puts("Generation : #{evolved.generation}")
+IO.puts("Events     : #{length(evolved.causal_network)}")
+stats = Hypergraph.stats(evolved.hypergraph)
+IO.inspect(stats, label: "Hypergraph stats")
+```
+
+### 3.2  Visualising the Hypergraph
+
+Binary edges are drawn as directed arrows; N-ary hyperedges are drawn as
+translucent coloured polygons. The layout is computed with a force-directed
+spring algorithm.
+
+```elixir
+evolved.hypergraph
+|> HypergraphSVG.to_svg(title: "Generation #{evolved.generation}")
+|> render.()
+```
+
+### 3.3  Evolution Strip
+
+A horizontal strip of panels shows one snapshot per generation.
+
+```elixir
+evolved
+|> HypergraphSVG.evolution_to_svg(max_snapshots: 8, panel_size: 300, columns: 4)
+|> render.()
+```
+
+---
+
+## 4  Update Orderings
+
+The Wolfram Model supports multiple strategies for selecting which rule match
+to apply at each step. Different orderings produce different evolutionary
+paths but, for causally invariant rule sets, always yield equivalent causal
+networks.
+
+| Ordering    | Description                                              |
+| ----------- | -------------------------------------------------------- |
+| `:first`    | First match found in rule/hyperedge enumeration order    |
+| `:leftmost` | Match whose hyperedges have the smallest vertex sort key |
+| `:random`   | Uniformly random match                                   |
+
+```elixir
+u0 = WolframModel.new(initial_hg, rules)
+
+e_first    = WolframModel.evolve_steps(u0, 5, ordering: :first)
+e_leftmost = WolframModel.evolve_steps(u0, 5, ordering: :leftmost)
+e_random   = WolframModel.evolve_steps(u0, 5, ordering: :random)
+
+for {label, m} <- [{"first", e_first}, {"leftmost", e_leftmost}, {"random", e_random}] do
+  n_verts =
+    m.hypergraph |> Hypergraph.hyperedges() |> Enum.flat_map(& &1) |> Enum.uniq() |> length()
+  IO.puts("#{label}: #{n_verts} vertices, #{m.generation} generations")
+end
+:ok
+```
+
+### 4.1  Parallel Evolution
+
+`evolve_parallel/1` finds *all* non-conflicting matches and applies them
+simultaneously in a single step — the maximum-parallelism update.
+
+```elixir
+u_par = WolframModel.new(initial_hg, rules)
+u_par = WolframModel.evolve_parallel(u_par)
+IO.puts("After one parallel step: generation #{u_par.generation}")
+Hypergraph.stats(u_par.hypergraph)
+```
+
+### 4.2  Fixpoint Detection
+
+```elixir
+# A simple rule that terminates
+terminating_rule = [
+  %{name: "merge", pattern: [[1, 2], [2, 3]], replacement: [[1, 3]]}
+]
+
+small_hg =
+  Hypergraph.new()
+  |> Hypergraph.add_hyperedge([1, 2])
+  |> Hypergraph.add_hyperedge([2, 3])
+  |> Hypergraph.add_hyperedge([3, 4])
+
+term_universe = WolframModel.new(small_hg, terminating_rule)
+final = WolframModel.evolve_until_fixpoint(term_universe)
+
+IO.puts("Fixpoint reached: #{WolframModel.fixpoint?(final)}")
+IO.puts("Steps taken     : #{final.generation}")
+```
+
+---
+
+## 5  Causal Networks
+
+Every rule application creates an **event**. Events carry:
+
+* the rule that fired
+* the hyperedges removed and added
+* `parent_ids` — the IDs of events that produced the matched hyperedges
+
+This forms a directed acyclic graph: the **causal network**.
+
+```elixir
+evolved.causal_network
+|> Enum.take(5)
+|> Enum.map(fn e ->
+  %{id: e.id, rule: e.rule.name, parents: e.parent_ids, added: length(e.added)}
+end)
+|> Kino.DataTable.new()
+```
+
+### 5.1  Causal Graph Visualisation
+
+Events are laid out by generation; causal edges flow downward.
+
+```elixir
+evolved
+|> WolframModel.causal_network_data()
+|> CausalGraphSVG.to_svg()
+|> render.()
+```
+
+### 5.2  Spacelike Foliations
+
+A **foliation** partitions events into layers such that every event's parents
+belong to earlier layers. This is the discrete analogue of constant-time
+hypersurfaces in relativity.
+
+```elixir
+layers = WolframModel.foliations(evolved)
+IO.puts("Number of spacelike layers: #{length(layers)}")
+
+foliation_data =
+  layers
+  |> Enum.with_index()
+  |> Enum.flat_map(fn {events, layer} ->
+    Enum.map(events, fn e ->
+      %{layer: layer, event_id: e.id, rule: e.rule.name, parents: length(e.parent_ids)}
+    end)
+  end)
+
+VegaLite.new(width: 600, height: 300, title: "Causal Foliations")
+|> VegaLite.data_from_values(foliation_data)
+|> VegaLite.mark(:circle, size: 80)
+|> VegaLite.encode_field(:x, "event_id", type: :quantitative, axis: [title: "Event ID"])
+|> VegaLite.encode_field(:y, "layer",    type: :quantitative, axis: [title: "Layer"])
+|> VegaLite.encode_field(:color, "rule", type: :nominal)
+|> VegaLite.encode(:tooltip, [
+  [field: "layer",    type: :quantitative, title: "Layer"],
+  [field: "event_id", type: :quantitative, title: "Event"],
+  [field: "rule",     type: :nominal,      title: "Rule"],
+  [field: "parents",  type: :quantitative, title: "# Parents"]
+])
+```
+
+### 5.3  Causal Invariance
+
+A rule set is **causally invariant** if every pair of non-overlapping rule
+applications commutes — i.e., applying them in either order yields the same
+state. This is the discrete analogue of relativistic covariance.
+
+```elixir
+IO.puts("Causally invariant (depth 2): #{WolframModel.causally_invariant?(universe, 2)}")
+IO.puts("Causally invariant (depth 3): #{WolframModel.causally_invariant?(universe, 3)}")
+```
+
+---
+
+## 6  Multiway Evolution
+
+Instead of picking one rule match per step, **multiway evolution** branches
+into *every* possible update simultaneously, producing a DAG of all possible
+histories.
+
+```elixir
+# Use a compact starting state for tractable branching
+compact_hg =
+  Hypergraph.new()
+  |> Hypergraph.add_hyperedge([1, 2])
+  |> Hypergraph.add_hyperedge([2, 3])
+
+compact_universe = WolframModel.new(compact_hg, RuleSet.basic_rules())
+
+dag = WolframModel.multiway_explore_dag(compact_universe, 3)
+
+IO.puts("Multiway nodes : #{map_size(dag.nodes)}")
+IO.puts("Multiway edges : #{MapSet.size(dag.edges)}")
+```
+
+### 6.1  Multiway DAG Visualisation
+
+Nodes are labelled with vertex count, edge count, and generation. Converging
+branches that reach the same hypergraph state share a single node.
+
+```elixir
+dag
+|> MultiwayGraphSVG.to_svg(width: 900)
+|> render.()
+```
+
+### 6.2  Branchial Graph
+
+The **branchial graph** connects rule matches that conflict at the *current*
+hypergraph state — matches whose input hyperedges overlap. These are the
+branching points between alternative histories; their connectivity encodes
+the quantum-mechanical branchial space.
+
+```elixir
+WolframModel.branchial_graph(evolved)
+|> BranchialGraphSVG.to_svg(title: "Branchial Graph", width: 700, height: 700)
+|> render.()
+```
+
+---
+
+## 7  Emergent Geometry
+
+### 7.1  Effective Spatial Dimension
+
+The spatial dimension of the hypergraph is not imposed — it *emerges* from the
+connectivity. We estimate it by fitting geodesic ball growth
+$V(r) \sim r^d$ over several seed vertices using hypergraph-native BFS.
+
+```elixir
+d = Analytics.estimate_dimension(evolved.hypergraph)
+IO.puts("Estimated dimension: #{Float.round(d, 3)}")
+```
+
+Track how dimension evolves across generations:
+
+```elixir
+dim_data =
+  evolved.evolution_history
+  |> Enum.reverse()
+  |> Enum.with_index()
+  |> Enum.map(fn {hg, gen} ->
+    %{generation: gen, dimension: Analytics.estimate_dimension(hg)}
+  end)
+
+VegaLite.new(width: 600, height: 300, title: "Emergent Spatial Dimension Over Generations")
+|> VegaLite.data_from_values(dim_data)
+|> VegaLite.mark(:line, point: true, strokeWidth: 2)
+|> VegaLite.encode_field(:x, "generation", type: :quantitative, axis: [title: "Generation"])
+|> VegaLite.encode_field(:y, "dimension",  type: :quantitative, axis: [title: "Est. d"])
+|> VegaLite.encode(:tooltip, [
+  [field: "generation", type: :quantitative],
+  [field: "dimension",  type: :quantitative, format: ".3f"]
+])
+```
+
+### 7.2  Geodesic Ball Growth Plot
+
+The dual-panel chart shows the raw $V(r)$ curve alongside the log-log view
+with the best-fit slope labelled $d \approx \ldots$.
+
+```elixir
+evolved.hypergraph
+|> GeodesicPlotSVG.to_svg(seeds: 5, title: "Geodesic Ball Growth")
+|> render.()
+```
+
+### 7.3  Ricci Scalar Curvature
+
+The **Ricci scalar curvature** $R$ appears as the next-order correction to ball
+growth beyond the flat-space $r^d$ term:
+
+$$V(r) \approx C_d \, r^d \left(1 - \frac{R\, r^2}{6(d+2)}\right)$$
+
+Taking logs gives a linear relationship between
+$\Delta(r) = \log V(r) - d \log r$ and $r^2$, whose slope is $-R/(6(d+2))$.
+
+| Sign of $R$ | Geometry           | Analogy             |
+| :---------: | ------------------ | ------------------- |
+| $R > 0$     | Positive curvature | Sphere-like         |
+| $R = 0$     | Flat               | Euclidean grid      |
+| $R < 0$     | Negative curvature | Hyperbolic / saddle |
+
+```elixir
+r_scalar = Analytics.estimate_ricci_scalar(evolved.hypergraph)
+
+case r_scalar do
+  nil -> IO.puts("Graph too small for curvature estimate")
+  r   -> IO.puts("Ricci scalar R ≈ #{Float.round(r, 4)}")
+end
+```
+
+#### Comparing curvature across known geometries
+
+```elixir
+# Flat 4×4 grid  (R ≈ 0)
+flat_hg =
+  for row <- 0..3, col <- 0..3, reduce: Hypergraph.new() do
+    acc ->
+      hg = if col < 3, do: Hypergraph.add_hyperedge(acc,  [row*4+col+1, row*4+col+2]),   else: acc
+      if row < 3,      do: Hypergraph.add_hyperedge(hg,   [row*4+col+1, (row+1)*4+col+1]), else: hg
+  end
+
+# Subdivided icosahedron (R > 0, sphere-like)
+ico_edges = [
+  {1,2},{1,3},{1,4},{1,5},{1,6},{2,3},{3,4},{4,5},{5,6},{6,2},
+  {2,7},{3,7},{3,8},{4,8},{4,9},{5,9},{5,10},{6,10},{6,11},{2,11},
+  {7,8},{8,9},{9,10},{10,11},{11,7},{7,12},{8,12},{9,12},{10,12},{11,12}
+]
+ico_faces = [
+  {1,2,3},{1,3,4},{1,4,5},{1,5,6},{1,6,2},
+  {2,3,7},{3,4,8},{4,5,9},{5,6,10},{6,2,11},
+  {2,7,11},{3,7,8},{4,8,9},{5,9,10},{6,10,11},
+  {12,7,8},{12,8,9},{12,9,10},{12,10,11},{12,11,7}
+]
+edge_to_mid =
+  ico_edges
+  |> Enum.with_index(13)
+  |> Map.new(fn {{a,b}, id} -> {{min(a,b), max(a,b)}, id} end)
+get_mid = fn a, b -> Map.fetch!(edge_to_mid, {min(a,b), max(a,b)}) end
+
+sphere_hg =
+  (Enum.flat_map(ico_edges, fn {a,b} -> m = get_mid.(a,b); [[a,m],[b,m]] end) ++
+   Enum.flat_map(ico_faces, fn {a,b,c} ->
+     [mab, mbc, mac] = [get_mid.(a,b), get_mid.(b,c), get_mid.(a,c)]
+     [[mab,mbc],[mbc,mac],[mac,mab]]
+   end))
+  |> Enum.reduce(Hypergraph.new(), &Hypergraph.add_hyperedge(&2, &1))
+
+[
+  %{geometry: "4×4 flat grid",         expected: "≈ 0",  r: Analytics.estimate_ricci_scalar(flat_hg)},
+  %{geometry: "Evolved universe",       expected: "?",   r: Analytics.estimate_ricci_scalar(evolved.hypergraph)},
+  %{geometry: "Subdivided icosahedron", expected: "> 0", r: Analytics.estimate_ricci_scalar(sphere_hg)}
+]
+|> Enum.map(fn row ->
+  r_str = if row.r, do: Float.round(row.r, 4) |> to_string(), else: "nil"
+  Map.put(row, :r, r_str)
+end)
+|> Kino.DataTable.new()
+```
+
+---
+
+## 8  Classic Wolfram Physics Benchmark Rules
+
+The Wolfram Physics Project identified specific rules with especially rich
+behaviour. This library ships five of them under `:wolfram` rule sets.
+
+```elixir
+WolframModel.RuleSet.wolfram_rules()
+|> Enum.map(fn {key, rules} ->
+  rule = List.first(rules)
+  %{
+    key:              key,
+    notation:         Rule.to_string(rule),
+    pattern_edges:    length(rule.pattern),
+    replacement_edges: length(rule.replacement)
+  }
+end)
+|> Kino.DataTable.new()
+```
+
+### 8.1  Evolving a Wolfram Benchmark Rule
+
+```elixir
+wolfram_rules = RuleSet.rule_set(:wolfram, :rule_1)
+
+wolfram_universe =
+  Hypergraph.new()
+  |> Hypergraph.add_hyperedge([1, 2])
+  |> Hypergraph.add_hyperedge([1, 3])
+  |> WolframModel.new(wolfram_rules)
+
+wolfram_evolved = WolframModel.evolve_steps(wolfram_universe, 15)
+
+wolfram_evolved.hypergraph
+|> HypergraphSVG.to_svg(title: "Wolfram Rule 1 — 15 steps")
+|> render.()
+```
+
+---
+
+## 9  Rule Analysis
+
+```elixir
+RuleSet.basic_rules()
+|> Enum.map(fn rule ->
+  {pat_arities, rep_arities} = RuleAnalysis.arity(rule)
+  %{
+    name:                  rule.name,
+    notation:              Rule.to_string(rule),
+    reversible:            RuleAnalysis.reversible?(rule),
+    self_complementary:    RuleAnalysis.self_complementary?(rule),
+    introduces_new_verts:  RuleAnalysis.introduces_new_vertices?(rule),
+    hyperedge_delta:       RuleAnalysis.hyperedge_delta(rule),
+    pattern_arities:       inspect(pat_arities),
+    replacement_arities:   inspect(rep_arities)
+  }
+end)
+|> Kino.DataTable.new()
+```
+
+### 9.1  Rule Notation Parser
+
+Rules can be written in standard Wolfram notation and parsed back to the
+internal representation:
+
+```elixir
+r = Rule.parse("{{1,2},{1,3}} -> {{2,3},{1,4}}")
+IO.puts("Parsed  : #{inspect(r.pattern)} -> #{inspect(r.replacement)}")
+IO.puts("Printed : #{Rule.to_string(r)}")
+IO.puts("Canonical form: #{Rule.to_string(RuleAnalysis.canonical_form(r))}")
+```
+
+### 9.2  Rule Equivalence
+
+Two rules are **equivalent** if one can be obtained from the other by
+renaming variables:
+
+```elixir
+r1 = Rule.parse("{{1,2}} -> {{1,3},{3,2}}")
+r2 = Rule.parse("{{a,b}} -> {{a,c},{c,b}}")
+
+IO.puts("r1 == r2 (structurally): #{RuleAnalysis.equivalent?(r1, r2)}")
+```
+
+---
+
+## 10  Conservation Law Detection
+
+```elixir
+conserved = Analytics.detect_conserved_quantities(evolved)
+
+IO.puts("Conserved quantities: #{inspect(conserved.conserved)}")
+IO.puts("Vertex count history (last 5): #{inspect(Enum.take(conserved.vertex_count_history, -5))}")
+IO.puts("Edge count history   (last 5): #{inspect(Enum.take(conserved.edge_count_history,   -5))}")
+```
+
+Track vertex and edge counts over time:
+
+```elixir
+history_data =
+  Enum.zip([
+    conserved.vertex_count_history,
+    conserved.edge_count_history,
+    0..length(conserved.vertex_count_history)
+  ])
+  |> Enum.map(fn {v, e, g} -> %{generation: g, vertices: v, edges: e} end)
+
+VegaLite.new(width: 600, height: 300, title: "Vertex and Edge Counts Over Generations")
+|> VegaLite.data_from_values(history_data)
+|> VegaLite.layers([
+  VegaLite.new()
+  |> VegaLite.mark(:line, color: "steelblue", strokeWidth: 2)
+  |> VegaLite.encode_field(:x, "generation", type: :quantitative)
+  |> VegaLite.encode_field(:y, "vertices",   type: :quantitative, axis: [title: "Count"]),
+
+  VegaLite.new()
+  |> VegaLite.mark(:line, color: "tomato", strokeDash: [4, 2], strokeWidth: 2)
+  |> VegaLite.encode_field(:x, "generation", type: :quantitative)
+  |> VegaLite.encode_field(:y, "edges",      type: :quantitative)
+])
+```
+
+---
+
+## 11  Event Graph Export
+
+Export the full causal event DAG as raw nodes and edges for integration with
+external graph tools (e.g. GraphViz, Neo4j, custom analysis):
+
+```elixir
+event_graph = WolframModel.export_event_graph(evolved)
+
+IO.puts("Events       : #{length(event_graph.nodes)}")
+IO.puts("Causal edges : #{length(event_graph.edges)}")
+
+event_graph.edges
+|> Enum.take(10)
+|> Kino.DataTable.new()
+```
+
+---
+
+## References
+
+* [Wolfram Physics Project](https://www.wolframphysics.org/)
+* [Technical Introduction — Curvature (§4.7)](https://www.wolframphysics.org/technical-introduction/limiting-behavior-and-emergent-geometry/curvature/)
+* [Technical Introduction — Dimension (§4.5)](https://www.wolframphysics.org/technical-introduction/limiting-behavior-and-emergent-geometry/the-notion-of-dimension/)
+* [A Class of Models with the Potential to Represent Fundamental Physics (arXiv)](https://arxiv.org/abs/2004.08210)
+* [Wolfram, *A New Kind of Science*, p. 1050 (geodesic ball growth)](https://www.wolframscience.com/nks/notes-9-15--sphere-volumes/)

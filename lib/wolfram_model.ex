@@ -694,6 +694,8 @@ defmodule WolframModel do
   def print_stats(model) do
     emergence = WolframModel.Analytics.analyze_emergence(model)
     causality = WolframModel.Analytics.analyze_causality(model)
+    conserved_quantities = WolframModel.Analytics.detect_conserved_quantities(model)
+    ricci_scalar = WolframModel.Analytics.estimate_ricci_scalar(model.hypergraph)
 
     IO.puts("=== Wolfram Model Evolution Statistics ===")
     IO.puts("Generation: #{model.generation}")
@@ -703,6 +705,8 @@ defmodule WolframModel do
     IO.puts("Complexity measure: #{emergence.complexity_measure}")
     IO.puts("Causal events: #{causality.event_count}")
     IO.puts("Causal density: #{Float.round(causality.causal_density, 3)}")
+    IO.puts("Conserved quantities: #{Enum.join(conserved_quantities, ", ")}")
+    IO.puts("Ricci scalar curvature: #{ricci_scalar}")
     IO.puts("==========================================")
   end
 end

@@ -4,7 +4,7 @@ defmodule WolframModel.MixProject do
   def project do
     [
       app: :wolfram_model,
-      version: "1.1.0",
+      version: "1.3.0",
       elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
       description: description(),
@@ -37,7 +37,7 @@ defmodule WolframModel.MixProject do
   defp docs() do
     [
       main: "WolframModel",
-      extras: ["README.md", "LICENSE", "examples.livemd"]
+      extras: ["README.md", "LICENSE", "CHANGELOG.md", "examples.livemd", "wolfram_model.livemd"]
     ]
   end
 

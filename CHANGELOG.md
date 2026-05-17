@@ -2,6 +2,32 @@
 
 All notable changes to this project are documented in this file.
 
+## v1.3.0 (2026-05-17)
+
+### Enhancements
+- **`HypergraphSVG.to_svg/2`** — improved force-directed layout with better
+  handling of large hyperedges and more compact spacing; added title option for
+  SVGs
+- **`MultiwayGraphSVG.to_svg/2` — fit-to-width layout** — when the `:width`
+  option is provided, the graph's horizontal positions are now scaled so the
+  layout fills exactly the requested width. Previously the `:width` option only
+  set the canvas size without adjusting node positions.
+
+## v1.2.0 (2026-05-17)
+
+### New features
+- **`Analytics.estimate_ricci_scalar/1`** — estimates the Ricci scalar
+  curvature $R$ of a hypergraph from the geodesic ball growth correction:
+  $V(r) \approx C_d\, r^d (1 - R\, r^2 / (6(d+2)))$.  A linear regression of
+  $\Delta(r) = \log V(r) - d \log r$ against $r^2$ gives the slope
+  $-R/(6(d+2))$, from which $R$ is recovered.  Positive values indicate
+  sphere-like (positive) curvature; negative values indicate hyperbolic-like
+  (negative) curvature; values near zero indicate flat Euclidean geometry.
+  Returns `nil` for graphs with fewer than 6 vertices.
+- **`wolfram_model.livemd`** — interactive Livebook notebook covering Wolfram
+  Physics theory, all major module features, and geometry examples (dimension
+  estimation, Ricci curvature across flat/sphere/evolved hypergraphs).
+
 ## v1.1.0 (2026-05-15)
 
 ### New features

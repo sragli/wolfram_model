@@ -39,7 +39,9 @@ defmodule WolframModel.MultiwayGraphSVG do
   Returns an SVG string for `dag`.
 
   Options:
-  - `:width` — canvas width in pixels. Computed automatically when omitted.
+  - `:width` — canvas width in pixels. When provided the layout is scaled
+    horizontally so the graph fills exactly this width. Computed automatically
+    when omitted.
   - `:height` — canvas height in pixels. Computed automatically when omitted.
   """
   @spec to_svg(%{root: term(), nodes: map(), edges: MapSet.t()}, keyword()) :: String.t()
@@ -50,8 +52,21 @@ defmodule WolframModel.MultiwayGraphSVG do
     auto_w = positions |> Map.values() |> Enum.map(&elem(&1, 0)) |> Enum.max(fn -> 0 end)
     auto_h = positions |> Map.values() |> Enum.map(&elem(&1, 1)) |> Enum.max(fn -> 0 end)
 
-    w = Keyword.get(opts, :width, trunc(auto_w + @node_w + 40))
-    h = Keyword.get(opts, :height, trunc(auto_h + @node_h + 40))
+    content_w = auto_w + @node_w + 40
+    content_h = auto_h + @node_h + 40
+
+    w = Keyword.get(opts, :width, trunc(content_w))
+    h = Keyword.get(opts, :height, trunc(content_h))
+
+    positions =
+      case Keyword.fetch(opts, :width) do
+        {:ok, target_w} when content_w > 0 ->
+          scale = target_w / content_w
+          Map.new(positions, fn {k, {x, y}} -> {k, {Float.round(x * scale, 1), y}} end)
+
+        _ ->
+          positions
+      end
 
     render(dag, positions, levels, w, h)
   end

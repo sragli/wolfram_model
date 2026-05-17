@@ -19,6 +19,11 @@ defmodule WolframModel.HypergraphSVG do
       model
       |> WolframModel.HypergraphSVG.evolution_to_svg(max_snapshots: 8)
       |> then(&File.write!("evolution.svg", &1))
+
+      # Render in a 3-column grid
+      model
+      |> WolframModel.HypergraphSVG.evolution_to_svg(max_snapshots: 12, columns: 3)
+      |> then(&File.write!("evolution.svg", &1))
   """
 
   alias Hypergraph
@@ -59,12 +64,13 @@ defmodule WolframModel.HypergraphSVG do
   end
 
   @doc """
-  Renders the full `evolution_history` of `model` as a horizontal strip of
-  panels, oldest first. Each panel shows one hypergraph snapshot.
+  Renders the full `evolution_history` of `model` as a grid of panels,
+  oldest first. Each panel shows one hypergraph snapshot.
 
   Options:
   - `:max_snapshots` — maximum panels to show (default `6`).
   - `:panel_size` — pixel size of each square panel (default `200`).
+  - `:columns` — number of panels per row (default: all panels in one row).
   """
   @spec evolution_to_svg(WolframModel.t(), keyword()) :: String.t()
   def evolution_to_svg(model, opts \\ []) do
@@ -78,13 +84,18 @@ defmodule WolframModel.HypergraphSVG do
       |> Enum.with_index()
 
     n = length(snapshots)
-    total_w = n * ps
-    total_h = ps
+    cols = min(Keyword.get(opts, :columns, n), n) |> max(1)
+    rows = ceil(n / cols)
+
+    total_w = cols * ps
+    total_h = rows * ps
 
     panels =
       Enum.map(snapshots, fn {hg, i} ->
+        col = rem(i, cols)
+        row = div(i, cols)
         inner = panel_svg(hg, ps, i)
-        ~s|<g transform="translate(#{i * ps}, 0)">#{inner}</g>|
+        ~s|<g transform="translate(#{col * ps}, #{row * ps})">#{inner}</g>|
       end)
 
     """

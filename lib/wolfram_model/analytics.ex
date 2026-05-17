@@ -361,4 +361,80 @@ defmodule WolframModel.Analytics do
   defp maybe_conserved(acc, label, values) do
     if Enum.uniq(values) |> length() == 1, do: [label | acc], else: acc
   end
+
+  @doc """
+  Estimates the Ricci scalar curvature of the hypergraph from geodesic ball
+  growth.
+
+  For a *d*-dimensional Riemannian space the volume of a geodesic ball of
+  radius *r* satisfies:
+
+      V(r) ≈ Cₐ · rᵈ · (1 − R · r² / (6(d+2)))
+
+  where R is the Ricci scalar curvature. Taking logs and grouping:
+
+      Δ(r) = log V(r) − d · log r  ≈  const − R · r² / (6(d+2))
+
+  So a linear regression of Δ(r) against r² yields
+
+      slope ≈ −R / (6(d+2))   ⟹   R = −slope · 6(d+2)
+
+  The estimate is averaged over up to 10 seed vertices. Returns `nil` for
+  graphs with fewer than 6 vertices or whenever the fit is degenerate.
+
+  - A result near `0.0` indicates flat (Euclidean-like) geometry.
+  - A positive result indicates positive curvature (sphere-like).
+  - A negative result indicates negative curvature (hyperbolic-like).
+  """
+  @spec estimate_ricci_scalar(Hypergraph.t()) :: float() | nil
+  def estimate_ricci_scalar(hg) do
+    vertices = hg |> Hypergraph.hyperedges() |> Enum.flat_map(& &1) |> Enum.uniq()
+
+    if length(vertices) < 6 do
+      nil
+    else
+      d = estimate_dimension(hg)
+      seeds = Enum.take(vertices, min(10, length(vertices)))
+
+      slopes =
+        seeds
+        |> Enum.map(&hypergraph_bfs_distances(hg, &1))
+        |> Enum.map(&fit_ricci_slope(&1, d))
+        |> Enum.reject(&is_nil/1)
+
+      if slopes == [] do
+        nil
+      else
+        mean_slope = Enum.sum(slopes) / length(slopes)
+        # R = -slope * 6 * (d + 2)
+        -mean_slope * 6.0 * (d + 2.0)
+      end
+    end
+  end
+
+  # Fit Δ(r) = log(V(r)) - d·log(r) against r² by linear regression.
+  # Returns the slope (-R / (6(d+2))), or nil if the fit is degenerate.
+  defp fit_ricci_slope(distances, d) do
+    max_r = distances |> Map.values() |> Enum.max(fn -> 0 end)
+
+    if max_r < 3 do
+      nil
+    else
+      points =
+        2..max_r
+        |> Enum.map(fn r ->
+          count = Enum.count(distances, fn {_, dist} -> dist <= r end)
+
+          if count > 1 do
+            delta = :math.log(count) - d * :math.log(r)
+            {r * r * 1.0, delta}
+          else
+            nil
+          end
+        end)
+        |> Enum.reject(&is_nil/1)
+
+      if length(points) < 2, do: nil, else: linear_regression_slope(points)
+    end
+  end
 end

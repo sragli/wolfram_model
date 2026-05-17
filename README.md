@@ -15,7 +15,7 @@ This repository contains a full-featured Elixir implementation of the Wolfram Mo
 ```elixir
 def deps do
   [
-    {:wolfram_model, "~> 1.1.0"}
+    {:wolfram_model, "~> 1.3.0"}
   ]
 end
 ```
@@ -38,7 +38,7 @@ end
 * Builds causal relationships between events
 * Exports causal graph via `export_event_graph/1` and `causal_network_data/1`
 * Computes spacelike foliations (layers of causally independent events) via `foliations/1`
-* Checks causal invariance (confluence) via `causally_invariant?/2` — tests both overlapping pairs (Church–Rosser) and non-overlapping pairs (commutativity)
+* Checks causal invariance (confluence) via `causally_invariant?/2` — tests both overlapping pairs (Church-Rosser) and non-overlapping pairs (commutativity)
 
 ### Multiway Evolution
 
@@ -51,6 +51,7 @@ end
 
 * Measures complexity, growth rates, clustering
 * Estimates effective spatial dimension via **hypergraph geodesic** ball growth (`Analytics.estimate_dimension/1`)
+* Estimates **Ricci scalar curvature** from the next-order ball-growth correction (`Analytics.estimate_ricci_scalar/1`) — positive for sphere-like, negative for hyperbolic-like geometries
 * Detects conserved quantities (vertex count, edge count, total degree and their parities) via `Analytics.detect_conserved_quantities/1`
 * Uses an information-theoretic approach to measure spatial coherence (Correlation Length)
 * Analyzes diameter and connectivity patterns
@@ -121,6 +122,9 @@ WolframModel.causally_invariant?(universe, 3)  # depth-3 Church-Rosser check
 # Estimate the emergent spatial dimension (uses hypergraph geodesics)
 dim = WolframModel.Analytics.estimate_dimension(evolved.hypergraph)
 
+# Estimate Ricci scalar curvature (positive → sphere-like, negative → hyperbolic)
+r_scalar = WolframModel.Analytics.estimate_ricci_scalar(evolved.hypergraph)
+
 # Detect conserved quantities across evolution history
 conserved = WolframModel.Analytics.detect_conserved_quantities(evolved)
 # => %{conserved: [:edge_count_parity, ...], vertex_count_history: [...], ...}
@@ -177,6 +181,26 @@ evolved.hypergraph
 |> then(&File.write!("geodesic.svg", &1))
 ```
 
+## Interactive Livebook
+
+For a step-by-step guided tour — including theory, worked examples, visualisations, and curvature analysis — open [`wolfram_model.livemd`](wolfram_model.livemd) in [Livebook](https://livebook.dev/):
+
+```bash
+livebook server wolfram_model.livemd
+```
+
+The notebook covers:
+1. Wolfram Physics background and core concepts
+2. Building and evolving universes
+3. Update orderings and parallel evolution
+4. Causal networks, foliations, and causal invariance
+5. Multiway evolution and branchial graphs
+6. Emergent spatial dimension and Ricci scalar curvature
+7. Classic Wolfram benchmark rules
+8. Rule analysis and conservation law detection
+
 ## References
 
 * [The Wolfram Physics Project](https://www.wolframphysics.org/)
+* [Technical Introduction](https://www.wolframphysics.org/technical-introduction/)
+* [arXiv: 2004.08210](https://arxiv.org/abs/2004.08210)
