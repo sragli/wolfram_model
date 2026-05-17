@@ -9,11 +9,15 @@ defmodule WolframModel.CausalGraphSVG do
   @margin 40
 
   def to_svg(%{nodes: nodes, edges: edges}) do
-    positions = layout_nodes(nodes)
+    positions = layout_nodes(nodes, edges)
 
-    max_gen = nodes |> Enum.map(& &1.generation) |> Enum.max(fn -> 1 end)
-    width = Enum.count(nodes) * @x_spacing + 2 * @margin
-    height = (max_gen + 1) * @y_spacing + 2 * @margin
+    {max_x, max_y} =
+      positions
+      |> Map.values()
+      |> Enum.reduce({0, 0}, fn {x, y}, {mx, my} -> {max(x, mx), max(y, my)} end)
+
+    width = max_x + @x_spacing + @margin
+    height = max_y + @y_spacing + @margin
 
     edges_svg =
       edges
@@ -74,17 +78,52 @@ defmodule WolframModel.CausalGraphSVG do
     """
   end
 
-  defp layout_nodes(nodes) do
-    # Group by generation: nodes in the same generation share a y-coordinate
-    # and are spread evenly along x within that row.
+  defp layout_nodes(nodes, edges) do
+    # Compute causal depth (longest path from a root) from the edge list so
+    # that causally independent events share the same depth and are spread
+    # horizontally, making branching visible.
+    #
+    # causal_network is stored newest-first, so parent_idx > child_idx.
+    # Sorting by descending id processes older nodes before newer ones,
+    # ensuring parent depths are resolved before their children.
+    node_ids = nodes |> Enum.map(& &1.id) |> MapSet.new()
+
+    parents =
+      Enum.reduce(edges, %{}, fn %{source: src, target: tgt}, acc ->
+        Map.update(acc, tgt, [src], &[src | &1])
+      end)
+
+    depth_map =
+      nodes
+      |> Enum.sort_by(& &1.id, :desc)
+      |> Enum.reduce(%{}, fn %{id: id}, acc ->
+        depth =
+          case Map.get(parents, id, []) do
+            [] ->
+              0
+
+            pids ->
+              pids
+              |> Enum.filter(&MapSet.member?(node_ids, &1))
+              |> Enum.map(&Map.get(acc, &1, 0))
+              |> then(fn
+                [] -> 0
+                ds -> Enum.max(ds) + 1
+              end)
+          end
+
+        Map.put(acc, id, depth)
+      end)
+
+    # Group nodes by depth and assign x positions within each row.
     nodes
-    |> Enum.group_by(& &1.generation)
-    |> Enum.flat_map(fn {gen, gen_nodes} ->
-      gen_nodes
+    |> Enum.group_by(fn %{id: id} -> Map.get(depth_map, id, 0) end)
+    |> Enum.flat_map(fn {depth, depth_nodes} ->
+      depth_nodes
       |> Enum.with_index()
       |> Enum.map(fn {%{id: id}, i} ->
         x = @margin + i * @x_spacing
-        y = @margin + gen * @y_spacing
+        y = @margin + depth * @y_spacing
         {id, {x, y}}
       end)
     end)
