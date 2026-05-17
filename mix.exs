@@ -44,6 +44,7 @@ defmodule WolframModel.MixProject do
   defp deps do
     [
       {:hypergraph, "~> 1.0.0"},
+      {:ex_doc, "~> 0.29", only: :dev, runtime: false},
       {:dialyxir, "~> 1.2", only: [:dev], runtime: false},
       {:stream_data, "~> 0.6", only: :test}
     ]
